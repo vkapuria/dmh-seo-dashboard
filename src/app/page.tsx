@@ -6,6 +6,12 @@ import { TrendChart, MultiTrendChart } from "@/components/dashboard/trend-chart"
 import { KeywordsTable, CompactKeywordList } from "@/components/dashboard/keywords-table";
 import { PagesTable, TypeBreakdown } from "@/components/dashboard/pages-table";
 import { AlertsList, AlertSummary } from "@/components/dashboard/alerts-list";
+import {
+  HomepageHealth,
+  TrafficWatchlist,
+  InsightsList,
+  InsightsSummaryWidget,
+} from "@/components/dashboard/insights";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -17,10 +23,12 @@ import {
   TrendingUp,
   BarChart3,
   Loader2,
+  Lightbulb,
 } from "lucide-react";
+import type { Insight, InsightCategory, InsightPriority } from "@/types/database";
 import { cn } from "@/lib/utils";
 
-type TabType = "overview" | "keywords" | "pages" | "alerts" | "settings";
+type TabType = "overview" | "keywords" | "pages" | "alerts" | "insights" | "settings";
 
 interface MetricsData {
   summary: {
@@ -133,6 +141,54 @@ interface SyncData {
   syncs: SyncItem[];
 }
 
+interface HomepageHealthData {
+  date: string;
+  total_clicks: number;
+  total_impressions: number;
+  avg_ctr: number;
+  avg_position: number;
+  keywords_page_one: number;
+  keywords_page_two: number;
+  keywords_page_three_plus: number;
+  total_keywords: number;
+  clicksChange: number;
+  impressionsChange: number;
+  positionChange: number;
+  keywordsPageOneChange: number;
+}
+
+interface WatchlistKeyword {
+  query: string;
+  latest_clicks_28d: number | null;
+  latest_impressions_28d: number | null;
+  latest_position: number | null;
+  position_trend: number | null;
+  ranking_page_url: string | null;
+  is_brand_keyword: boolean;
+  is_core_keyword: boolean;
+}
+
+interface InsightsSummary {
+  total: number;
+  byCategory: Record<InsightCategory, number>;
+  byPriority: Record<InsightPriority, number>;
+  homepage: number;
+  highValue: number;
+}
+
+interface InsightsData {
+  insights: Insight[];
+  summary: InsightsSummary;
+  homepage: HomepageHealthData | null;
+  keywordsAtRisk: WatchlistKeyword[];
+  watchlist: {
+    needsAttention: WatchlistKeyword[];
+    growing: WatchlistKeyword[];
+    stable: WatchlistKeyword[];
+    untapped: WatchlistKeyword[];
+  };
+}
+
 export default function Dashboard() {
   const [activeTab, setActiveTab] = useState<TabType>("overview");
   const [days, setDays] = useState(28);
@@ -155,6 +211,7 @@ export default function Dashboard() {
   const [keywords, setKeywords] = useState<KeywordsData | null>(null);
   const [pages, setPages] = useState<PagesData | null>(null);
   const [alerts, setAlerts] = useState<AlertsData | null>(null);
+  const [insights, setInsights] = useState<InsightsData | null>(null);
   const [syncStatus, setSyncStatus] = useState<SyncData | null>(null);
 
   // Fetch keywords with filters
@@ -187,11 +244,12 @@ export default function Dashboard() {
   const fetchData = useCallback(async () => {
     setIsLoading(true);
     try {
-      const [metricsRes, keywordsRes, pagesRes, alertsRes, syncRes] = await Promise.all([
+      const [metricsRes, keywordsRes, pagesRes, alertsRes, insightsRes, syncRes] = await Promise.all([
         fetch(`/api/metrics?days=${days}`),
         fetch(`/api/keywords?compareDays=7&limit=500`),
         fetch(`/api/pages?days=${days}&limit=50`),
         fetch(`/api/alerts?limit=50`),
+        fetch(`/api/insights`),
         fetch(`/api/sync`),
       ]);
 
@@ -199,6 +257,7 @@ export default function Dashboard() {
       if (keywordsRes.ok) setKeywords(await keywordsRes.json());
       if (pagesRes.ok) setPages(await pagesRes.json());
       if (alertsRes.ok) setAlerts(await alertsRes.json());
+      if (insightsRes.ok) setInsights(await insightsRes.json());
       if (syncRes.ok) setSyncStatus(await syncRes.json());
     } catch (error) {
       console.error("Error fetching data:", error);
@@ -292,10 +351,60 @@ export default function Dashboard() {
     }
   };
 
+  // Handle insight actions
+  const handleInsightDismiss = async (id: string) => {
+    try {
+      await fetch("/api/insights", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, action: "dismiss" }),
+      });
+      setInsights((prev) =>
+        prev
+          ? {
+              ...prev,
+              insights: prev.insights.filter((i) => i.id !== id),
+              summary: {
+                ...prev.summary,
+                total: prev.summary.total - 1,
+              },
+            }
+          : null
+      );
+    } catch (error) {
+      console.error("Error dismissing insight:", error);
+    }
+  };
+
+  const handleInsightResolve = async (id: string) => {
+    try {
+      await fetch("/api/insights", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, action: "resolve" }),
+      });
+      setInsights((prev) =>
+        prev
+          ? {
+              ...prev,
+              insights: prev.insights.filter((i) => i.id !== id),
+              summary: {
+                ...prev.summary,
+                total: prev.summary.total - 1,
+              },
+            }
+          : null
+      );
+    } catch (error) {
+      console.error("Error resolving insight:", error);
+    }
+  };
+
   const tabs = [
     { id: "overview" as const, label: "Overview", icon: BarChart3 },
     { id: "keywords" as const, label: "Keywords", icon: Search },
     { id: "pages" as const, label: "Pages", icon: FileText },
+    { id: "insights" as const, label: "Insights", icon: Lightbulb },
     { id: "alerts" as const, label: "Alerts", icon: Bell },
     { id: "settings" as const, label: "Settings", icon: Settings },
   ];
@@ -315,6 +424,12 @@ export default function Dashboard() {
             </div>
 
             <div className="flex items-center gap-4">
+              {insights && insights.summary.total > 0 && (
+                <InsightsSummaryWidget
+                  summary={insights.summary}
+                  onClick={() => setActiveTab("insights")}
+                />
+              )}
               {alerts && <AlertSummary counts={alerts.unreadCounts} />}
 
               {/* Date range selector */}
@@ -418,6 +533,18 @@ export default function Dashboard() {
                       {alerts.unreadCounts.total}
                     </span>
                   )}
+                  {tab.id === "insights" && insights && insights.summary.total > 0 && (
+                    <span className={cn(
+                      "rounded-full px-2 py-0.5 text-xs font-medium",
+                      insights.summary.byPriority.critical > 0
+                        ? "bg-red-100 text-red-700"
+                        : insights.summary.byPriority.high > 0
+                          ? "bg-orange-100 text-orange-700"
+                          : "bg-blue-100 text-blue-700"
+                    )}>
+                      {insights.summary.total}
+                    </span>
+                  )}
                 </button>
               );
             })}
@@ -436,6 +563,26 @@ export default function Dashboard() {
             {/* Overview Tab */}
             {activeTab === "overview" && metrics && (
               <div className="space-y-6">
+                {/* Homepage Health & Traffic Watchlist (Priority Insights) */}
+                {insights && (
+                  <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                    <HomepageHealth
+                      data={insights.homepage}
+                      onViewDetails={() => {
+                        setKeywordPageType("home");
+                        setActiveTab("keywords");
+                      }}
+                    />
+                    <TrafficWatchlist
+                      needsAttention={insights.watchlist.needsAttention}
+                      growing={insights.watchlist.growing}
+                      stable={insights.watchlist.stable}
+                      untapped={insights.watchlist.untapped}
+                      onViewAll={() => setActiveTab("insights")}
+                    />
+                  </div>
+                )}
+
                 {/* Metric cards */}
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
                   <MetricCard
@@ -704,6 +851,62 @@ export default function Dashboard() {
                   } 
                   title="All Pages"
                   pageTypeLabels={pages.pageTypeLabels}
+                />
+              </div>
+            )}
+
+            {/* Insights Tab */}
+            {activeTab === "insights" && insights && (
+              <div className="space-y-6">
+                {/* Summary Cards */}
+                <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+                  <Card className="bg-green-50 border-green-200">
+                    <CardContent className="p-4 text-center">
+                      <p className="text-2xl font-bold text-green-700">{insights.summary.byCategory.opportunity}</p>
+                      <p className="text-sm text-green-600">Opportunities</p>
+                    </CardContent>
+                  </Card>
+                  <Card className="bg-red-50 border-red-200">
+                    <CardContent className="p-4 text-center">
+                      <p className="text-2xl font-bold text-red-700">{insights.summary.byCategory.threat}</p>
+                      <p className="text-sm text-red-600">Threats</p>
+                    </CardContent>
+                  </Card>
+                  <Card className="bg-blue-50 border-blue-200">
+                    <CardContent className="p-4 text-center">
+                      <p className="text-2xl font-bold text-blue-700">{insights.summary.byCategory.pattern}</p>
+                      <p className="text-sm text-blue-600">Patterns</p>
+                    </CardContent>
+                  </Card>
+                  <Card className="bg-amber-50 border-amber-200">
+                    <CardContent className="p-4 text-center">
+                      <p className="text-2xl font-bold text-amber-700">{insights.summary.byCategory.action}</p>
+                      <p className="text-sm text-amber-600">Actions</p>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                {/* Quick Stats */}
+                <div className="flex flex-wrap gap-4 text-sm">
+                  <span className="rounded-full bg-blue-100 px-3 py-1 text-blue-700">
+                    {insights.summary.homepage} Homepage-related
+                  </span>
+                  <span className="rounded-full bg-purple-100 px-3 py-1 text-purple-700">
+                    {insights.summary.highValue} High-value Keywords
+                  </span>
+                  <span className="rounded-full bg-red-100 px-3 py-1 text-red-700">
+                    {insights.summary.byPriority.critical} Critical
+                  </span>
+                  <span className="rounded-full bg-orange-100 px-3 py-1 text-orange-700">
+                    {insights.summary.byPriority.high} High Priority
+                  </span>
+                </div>
+
+                {/* Insights List */}
+                <InsightsList
+                  insights={insights.insights}
+                  onDismiss={handleInsightDismiss}
+                  onResolve={handleInsightResolve}
                 />
               </div>
             )}

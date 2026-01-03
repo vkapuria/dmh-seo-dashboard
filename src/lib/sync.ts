@@ -7,6 +7,7 @@ import {
   getBackfillDateRange,
   type DateRange,
 } from "./gsc";
+import { runInsightsGeneration } from "./insights";
 import type { PageType, AlertType, AlertSeverity } from "@/types/database";
 
 const supabase = createServerSupabase();
@@ -355,11 +356,13 @@ export async function runDailySync(): Promise<{
   success: boolean;
   recordsSynced: number;
   alertsGenerated: number;
+  insightsGenerated: number;
   error?: string;
 }> {
   const syncId = await startSyncLog();
   let totalRecords = 0;
   let alertsGenerated = 0;
+  let insightsGenerated = 0;
 
   try {
     // Sync last 7 days (to catch any late data)
@@ -384,14 +387,23 @@ export async function runDailySync(): Promise<{
     alertsGenerated = await generateAlerts();
     console.log(`Generated ${alertsGenerated} alerts`);
 
+    // Generate insights (homepage snapshots, high-value keywords, insights)
+    const insightsResult = await runInsightsGeneration();
+    if (insightsResult.success) {
+      insightsGenerated = insightsResult.insightsGenerated;
+      console.log(`Generated ${insightsGenerated} insights`);
+    } else {
+      console.error("Insights generation failed:", insightsResult.error);
+    }
+
     await completeSyncLog(syncId, totalRecords, "completed");
 
-    return { success: true, recordsSynced: totalRecords, alertsGenerated };
+    return { success: true, recordsSynced: totalRecords, alertsGenerated, insightsGenerated };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "Unknown error";
     console.error("Sync failed:", errorMessage);
     await completeSyncLog(syncId, totalRecords, "failed", errorMessage);
-    return { success: false, recordsSynced: totalRecords, alertsGenerated, error: errorMessage };
+    return { success: false, recordsSynced: totalRecords, alertsGenerated, insightsGenerated, error: errorMessage };
   }
 }
 
