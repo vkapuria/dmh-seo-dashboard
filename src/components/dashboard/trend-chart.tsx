@@ -95,7 +95,7 @@ export function TrendChart({ data, metric, title }: TrendChartProps) {
                   boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.1)",
                 }}
                 labelFormatter={(date) => format(parseISO(date as string), "MMM d, yyyy")}
-                formatter={(value: number) => [formatTooltip(value), title]}
+                formatter={(value: number | undefined) => [formatTooltip(value ?? 0), title]}
               />
               <Line
                 type="monotone"
@@ -150,8 +150,8 @@ export function MultiTrendChart({ data }: MultiTrendChartProps) {
                   boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.1)",
                 }}
                 labelFormatter={(date) => format(parseISO(date as string), "MMM d, yyyy")}
-                formatter={(value: number, name: string) => [
-                  name === "impressions" ? Math.round(value * 100).toLocaleString() : value.toLocaleString(),
+                formatter={(value: number | undefined, name: string | undefined) => [
+                  name === "impressions" ? Math.round((value ?? 0) * 100).toLocaleString() : (value ?? 0).toLocaleString(),
                   name === "impressions" ? "Impressions" : "Clicks",
                 ]}
               />
