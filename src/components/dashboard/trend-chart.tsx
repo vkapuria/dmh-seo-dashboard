@@ -2,8 +2,10 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
-  LineChart,
+  ComposedChart,
+  LineChart, // Added back for the single trend chart
   Line,
+  Bar,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -21,91 +23,107 @@ interface DailyMetric {
   avg_position: number;
 }
 
-interface TrendChartProps {
+// -- Custom Tooltip Component --
+const CustomTooltip = ({ active, payload, label }: any) => {
+  if (active && payload && payload.length) {
+    return (
+      <div className="rounded-lg border border-gray-200 bg-white p-3 shadow-xl ring-1 ring-black/5">
+        <p className="mb-2 text-xs font-medium text-gray-500">
+          {format(parseISO(label as string), "EEE, MMM d, yyyy")}
+        </p>
+        <div className="space-y-1">
+          {payload.map((entry: any) => (
+            <div key={entry.name} className="flex items-center gap-3 text-sm">
+              <div
+                className="h-2 w-2 rounded-full"
+                style={{ backgroundColor: entry.color }}
+              />
+              <span className="w-24 text-gray-600 capitalize">{entry.name}:</span>
+              <span className="font-semibold text-gray-900 tabular-nums">
+                {entry.value.toLocaleString()}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+  return null;
+};
+
+// -- Multi-Metric Chart (Bars + Line) --
+interface MultiTrendChartProps {
   data: DailyMetric[];
-  metric: "clicks" | "impressions" | "ctr" | "position";
-  title: string;
 }
 
-export function TrendChart({ data, metric, title }: TrendChartProps) {
-  const chartData = data.map((d) => ({
-    date: d.date,
-    value:
-      metric === "clicks"
-        ? d.total_clicks
-        : metric === "impressions"
-          ? d.total_impressions
-          : metric === "ctr"
-            ? Number(d.avg_ctr) * 100
-            : Number(d.avg_position),
-  }));
-
-  const formatYAxis = (value: number) => {
-    if (metric === "clicks" || metric === "impressions") {
-      if (value >= 1000) return `${(value / 1000).toFixed(0)}K`;
-      return value.toString();
-    }
-    if (metric === "ctr") return `${value.toFixed(1)}%`;
-    return value.toFixed(1);
-  };
-
-  const formatTooltip = (value: number) => {
-    if (metric === "clicks" || metric === "impressions") return value.toLocaleString();
-    if (metric === "ctr") return `${value.toFixed(2)}%`;
-    return value.toFixed(1);
-  };
-
-  const lineColor =
-    metric === "clicks"
-      ? "#3b82f6"
-      : metric === "impressions"
-        ? "#8b5cf6"
-        : metric === "ctr"
-          ? "#10b981"
-          : "#f59e0b";
-
+export function MultiTrendChart({ data }: MultiTrendChartProps) {
   return (
-    <Card>
-      <CardHeader className="pb-2">
-        <CardTitle className="text-base font-medium">{title}</CardTitle>
+    <Card className="border border-gray-200 shadow-none">
+      <CardHeader className="border-b border-gray-100 px-6 py-4">
+        <CardTitle className="text-sm font-medium text-gray-900">Traffic Performance</CardTitle>
       </CardHeader>
-      <CardContent>
-        <div className="h-[300px]">
+      <CardContent className="p-6">
+        <div className="h-[300px] w-full">
           <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={chartData} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+            <ComposedChart data={data} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
+              
               <XAxis
                 dataKey="date"
-                tick={{ fontSize: 12 }}
+                tick={{ fontSize: 11, fill: "#6b7280" }}
                 tickFormatter={(date) => format(parseISO(date), "MMM d")}
-                stroke="#9ca3af"
+                axisLine={false}
+                tickLine={false}
+                minTickGap={30}
+                dy={10}
               />
+              
+              {/* Left Axis: Clicks (Bars) */}
               <YAxis
-                tick={{ fontSize: 12 }}
-                tickFormatter={formatYAxis}
-                stroke="#9ca3af"
-                width={50}
-                reversed={metric === "position"}
+                yAxisId="left"
+                tick={{ fontSize: 11, fill: "#6b7280" }}
+                axisLine={false}
+                tickLine={false}
+                tickFormatter={(value) => 
+                  value >= 1000 ? `${(value / 1000).toFixed(1)}k` : value
+                }
               />
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: "white",
-                  border: "1px solid #e5e7eb",
-                  borderRadius: "8px",
-                  boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.1)",
-                }}
-                labelFormatter={(date) => format(parseISO(date as string), "MMM d, yyyy")}
-                formatter={(value: number) => [formatTooltip(value), title]}
+
+              {/* Right Axis: Impressions (Line) */}
+              <YAxis
+                yAxisId="right"
+                orientation="right"
+                tick={{ fontSize: 11, fill: "#6b7280" }}
+                axisLine={false}
+                tickLine={false}
+                tickFormatter={(value) => 
+                  value >= 1000 ? `${(value / 1000).toFixed(0)}k` : value
+                }
               />
+
+              <Tooltip content={<CustomTooltip />} cursor={{ fill: "#f9fafb" }} />
+              <Legend wrapperStyle={{ paddingTop: "20px", fontSize: "12px" }} />
+
+              <Bar
+                yAxisId="left"
+                dataKey="total_clicks"
+                name="Clicks"
+                fill="#2563eb"
+                barSize={20}
+                radius={[4, 4, 0, 0]}
+              />
+
               <Line
+                yAxisId="right"
                 type="monotone"
-                dataKey="value"
-                stroke={lineColor}
+                dataKey="total_impressions"
+                name="Impressions"
+                stroke="#e11d48"
                 strokeWidth={2}
                 dot={false}
-                activeDot={{ r: 6 }}
+                activeDot={{ r: 4, strokeWidth: 0, fill: "#e11d48" }}
               />
-            </LineChart>
+            </ComposedChart>
           </ResponsiveContainer>
         </div>
       </CardContent>
@@ -113,64 +131,65 @@ export function TrendChart({ data, metric, title }: TrendChartProps) {
   );
 }
 
-// Multi-line chart for overview
-interface MultiTrendChartProps {
-  data: DailyMetric[];
-}
-
-export function MultiTrendChart({ data }: MultiTrendChartProps) {
-  const chartData = data.map((d) => ({
+// -- Single Metric Chart (Position/CTR) --
+export function TrendChart({ data, metric, title }: any) {
+  const chartData = data.map((d: any) => ({
     date: d.date,
-    clicks: d.total_clicks,
-    impressions: d.total_impressions / 100, // Scale down for visibility
+    value: metric === "ctr" ? Number(d.avg_ctr) * 100 : Number(d.avg_position),
   }));
 
+  const color = metric === "ctr" ? "#10b981" : "#f59e0b"; // Emerald or Amber
+
   return (
-    <Card>
-      <CardHeader className="pb-2">
-        <CardTitle className="text-base font-medium">Traffic Overview</CardTitle>
+    <Card className="border border-gray-200 shadow-none">
+      <CardHeader className="border-b border-gray-100 px-6 py-4">
+        <CardTitle className="text-sm font-medium text-gray-900">{title}</CardTitle>
       </CardHeader>
-      <CardContent>
+      <CardContent className="p-6">
         <div className="h-[300px]">
           <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={chartData} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+            <LineChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
               <XAxis
                 dataKey="date"
-                tick={{ fontSize: 12 }}
+                tick={{ fontSize: 11, fill: "#6b7280" }}
                 tickFormatter={(date) => format(parseISO(date), "MMM d")}
-                stroke="#9ca3af"
+                axisLine={false}
+                tickLine={false}
+                minTickGap={30}
+                dy={10}
               />
-              <YAxis tick={{ fontSize: 12 }} stroke="#9ca3af" width={50} />
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: "white",
-                  border: "1px solid #e5e7eb",
-                  borderRadius: "8px",
-                  boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.1)",
+              <YAxis
+                tick={{ fontSize: 11, fill: "#6b7280" }}
+                axisLine={false}
+                tickLine={false}
+                reversed={metric === "position"} // Rank 1 is top
+                domain={['auto', 'auto']}
+              />
+              <Tooltip 
+                cursor={{ stroke: "#e5e7eb", strokeWidth: 1 }}
+                content={({ active, payload, label }) => {
+                  if (active && payload && payload.length) {
+                    return (
+                      <div className="rounded-lg border border-gray-200 bg-white p-2 shadow-lg text-xs">
+                        <span className="font-semibold text-gray-900">
+                          {Number(payload[0].value).toFixed(1)}
+                          {metric === "ctr" ? "%" : ""}
+                        </span>
+                        <span className="ml-2 text-gray-500">{format(parseISO(label as string), "MMM d")}</span>
+                      </div>
+                    )
+                  }
+                  return null;
                 }}
-                labelFormatter={(date) => format(parseISO(date as string), "MMM d, yyyy")}
-                formatter={(value: number, name: string) => [
-                  name === "impressions" ? Math.round(value * 100).toLocaleString() : value.toLocaleString(),
-                  name === "impressions" ? "Impressions" : "Clicks",
-                ]}
-              />
-              <Legend />
-              <Line
-                type="monotone"
-                dataKey="clicks"
-                name="Clicks"
-                stroke="#3b82f6"
-                strokeWidth={2}
-                dot={false}
               />
               <Line
                 type="monotone"
-                dataKey="impressions"
-                name="Impressions (÷100)"
-                stroke="#8b5cf6"
+                dataKey="value"
+                stroke={color}
                 strokeWidth={2}
                 dot={false}
+                activeDot={{ r: 4 }}
               />
             </LineChart>
           </ResponsiveContainer>

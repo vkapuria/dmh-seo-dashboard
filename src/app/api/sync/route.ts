@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { runDailySync, runBackfill } from "@/lib/sync";
+import { runDailySync, runBackfill, syncCountryMetrics, syncDeviceMetrics } from "@/lib/sync";
+import { getDateRange } from "@/lib/gsc";
+import { createServerSupabase } from "@/lib/supabase";
 
 // POST /api/sync - Trigger manual sync
 export async function POST(request: NextRequest) {
@@ -13,7 +15,27 @@ export async function POST(request: NextRequest) {
     }
 
     const result = await runDailySync();
-    return NextResponse.json(result);
+    let totalRecords = result.recordsSynced || 0;
+
+    // Add dimension sync for daily or dimensions mode
+    if (mode === "daily" || mode === "dimensions") {
+      const supabase = createServerSupabase();
+      const dateRange = getDateRange(7);
+      const { startDate, endDate } = dateRange;
+
+      // Sync country metrics
+      const countryRecords = await syncCountryMetrics(supabase, startDate, endDate);
+      totalRecords += countryRecords;
+
+      // Sync device metrics
+      const deviceRecords = await syncDeviceMetrics(supabase, startDate, endDate);
+      totalRecords += deviceRecords;
+    }
+
+    return NextResponse.json({
+      ...result,
+      recordsSynced: totalRecords,
+    });
   } catch (error) {
     console.error("Sync API error:", error);
     return NextResponse.json(

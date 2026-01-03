@@ -97,6 +97,8 @@ export async function GET(request: NextRequest) {
     const pageUrl = searchParams.get("pageUrl") || "";
     const pageType = searchParams.get("pageType") || "";
     const minImpressions = parseInt(searchParams.get("minImpressions") || "0");
+    const country = searchParams.get("country");
+    const device = searchParams.get("device");
 
     // Get the latest date in our data
     const { data: latestDateData } = await supabase
@@ -156,13 +158,38 @@ export async function GET(request: NextRequest) {
     previousPeriodStart.setDate(previousPeriodStart.getDate() - compareDays + 1);
     const prevStartStr = previousPeriodStart.toISOString().split("T")[0];
 
+    // Determine which table to use based on filters
+    // Country and Device are mutually exclusive - country takes priority
+    let tableName = "seo_keyword_rankings";
+    let activeCountry = country;
+    let activeDevice = device;
+
+    if (country && device) {
+      // Can't filter by both - country takes priority, ignore device
+      activeDevice = null;
+    }
+
+    if (activeCountry) {
+      tableName = "seo_keyword_rankings_by_country";
+    } else if (activeDevice) {
+      tableName = "seo_keyword_rankings_by_device";
+    }
+
     // Build query for CURRENT period (aggregate over compareDays)
     let currentQuery = supabase
-      .from("seo_keyword_rankings")
+      .from(tableName)
       .select("query, page_url, clicks, impressions, ctr, position, date")
       .gte("date", currentStartStr)
       .lte("date", latestDate)
       .not("date", "in", `(${EXCLUDED_DATES.join(",")})`);
+
+      if (activeCountry) {
+        currentQuery = currentQuery.eq("country", activeCountry);
+      }
+      
+      if (activeDevice) {
+        currentQuery = currentQuery.eq("device", activeDevice);
+      }
 
     if (search) {
       currentQuery = currentQuery.ilike("query", `%${search}%`);
@@ -213,11 +240,19 @@ export async function GET(request: NextRequest) {
 
     // Build query for PREVIOUS period
     let prevQuery = supabase
-      .from("seo_keyword_rankings")
+      .from(tableName)
       .select("query, clicks, impressions, position")
       .gte("date", prevStartStr)
       .lte("date", prevEndStr)
       .not("date", "in", `(${EXCLUDED_DATES.join(",")})`);
+
+      if (activeCountry) {
+        prevQuery = prevQuery.eq("country", activeCountry);
+      }
+      
+      if (activeDevice) {
+        prevQuery = prevQuery.eq("device", activeDevice);
+      }
 
     if (search) {
       prevQuery = prevQuery.ilike("query", `%${search}%`);

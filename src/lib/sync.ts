@@ -3,6 +3,8 @@ import {
   fetchDailyMetrics,
   fetchKeywordRankings,
   fetchPagePerformance,
+  fetchMetricsByCountry,
+  fetchMetricsByDevice,
   getDateRange,
   getBackfillDateRange,
   type DateRange,
@@ -10,6 +12,38 @@ import {
 import type { PageType, AlertType, AlertSeverity } from "@/types/database";
 
 const supabase = createServerSupabase();
+
+// Type definitions for Supabase data
+interface SyncLogRecord {
+  id: string;
+  started_at: string;
+  status: string;
+  records_synced: number;
+}
+
+interface KeywordRecord {
+  date: string;
+  query: string;
+  clicks: number;
+  impressions: number;
+  ctr: number;
+  position: number;
+  page_url: string | null;
+}
+
+interface PageRecord {
+  date: string;
+  page_url: string;
+  page_type: PageType;
+  clicks: number;
+  impressions: number;
+  ctr: number;
+  position: number;
+}
+
+interface DailyMetricRecord {
+  date: string;
+}
 
 // Determine page type from URL
 function getPageType(url: string): PageType {
@@ -39,12 +73,12 @@ function getPageType(url: string): PageType {
 async function startSyncLog(): Promise<string> {
   const { data, error } = await supabase
     .from("seo_sync_logs")
-    .insert({ started_at: new Date().toISOString(), status: "running", records_synced: 0 })
+    .insert({ started_at: new Date().toISOString(), status: "running", records_synced: 0 } as never)
     .select("id")
-    .single();
+    .single() as { data: SyncLogRecord | null; error: any };
 
   if (error) throw error;
-  return data.id;
+  return data!.id;
 }
 
 // Complete a sync log entry
@@ -61,7 +95,7 @@ async function completeSyncLog(
       status,
       records_synced: recordsSynced,
       error_message: errorMessage || null,
-    })
+    } as never)
     .eq("id", id);
 }
 
@@ -78,7 +112,7 @@ async function syncDailyMetrics(dateRange: DateRange): Promise<number> {
       total_impressions: m.impressions,
       avg_ctr: m.ctr,
       avg_position: m.position,
-    })),
+    })) as never[],
     { onConflict: "date" }
   );
 
@@ -136,7 +170,7 @@ async function syncKeywordRankings(dateRange: DateRange): Promise<number> {
     const batch = data.slice(i, i + BATCH_SIZE);
     const { error } = await supabase
       .from("seo_keyword_rankings")
-      .upsert(batch, { onConflict: "date,query" });
+      .upsert(batch as never[], { onConflict: "date,query" });
 
     if (error) throw error;
   }
@@ -166,11 +200,67 @@ async function syncPagePerformance(dateRange: DateRange): Promise<number> {
     const batch = data.slice(i, i + BATCH_SIZE);
     const { error } = await supabase
       .from("seo_page_performance")
-      .upsert(batch, { onConflict: "date,page_url" });
+      .upsert(batch as never[], { onConflict: "date,page_url" });
 
     if (error) throw error;
   }
 
+  return data.length;
+}
+
+// Sync country metrics
+export async function syncCountryMetrics(
+  supabaseClient: any,
+  startDate: string,
+  endDate: string
+): Promise<number> {
+  const data = await fetchMetricsByCountry(startDate, endDate);
+  
+  if (data.length === 0) return 0;
+
+  const { error } = await supabaseClient
+    .from("seo_metrics_by_country")
+    .upsert(
+      data.map((row) => ({
+        date: row.date,
+        country: row.country,
+        clicks: row.clicks,
+        impressions: row.impressions,
+        ctr: row.ctr,
+        position: row.position,
+      })) as never[],
+      { onConflict: "date,country" }
+    );
+
+  if (error) throw error;
+  return data.length;
+}
+
+// Sync device metrics
+export async function syncDeviceMetrics(
+  supabaseClient: any,
+  startDate: string,
+  endDate: string
+): Promise<number> {
+  const data = await fetchMetricsByDevice(startDate, endDate);
+  
+  if (data.length === 0) return 0;
+
+  const { error } = await supabaseClient
+    .from("seo_metrics_by_device")
+    .upsert(
+      data.map((row) => ({
+        date: row.date,
+        device: row.device,
+        clicks: row.clicks,
+        impressions: row.impressions,
+        ctr: row.ctr,
+        position: row.position,
+      })) as never[],
+      { onConflict: "date,device" }
+    );
+
+  if (error) throw error;
   return data.length;
 }
 
@@ -189,7 +279,7 @@ async function generateAlerts(): Promise<number> {
     .select("date")
     .order("date", { ascending: false })
     .limit(1)
-    .single();
+    .single() as { data: DailyMetricRecord | null; error: any };
 
   if (!latestData) return 0;
 
@@ -198,28 +288,22 @@ async function generateAlerts(): Promise<number> {
   previousDate.setDate(previousDate.getDate() - 7);
   const prevDateStr = previousDate.toISOString().split("T")[0];
 
-  // Check for position drops/gains (> 3 positions)
-  const { data: keywordChanges } = await supabase.rpc("get_keyword_changes", {
-    current_date: latestDate,
-    previous_date: prevDateStr,
-  });
-
-  // Fallback: manual query if RPC not available
+  // Get current and previous keywords
   const { data: currentKeywords } = await supabase
     .from("seo_keyword_rankings")
     .select("*")
     .eq("date", latestDate)
-    .gt("impressions", 100); // Only keywords with decent impressions
+    .gt("impressions", 100) as { data: KeywordRecord[] | null; error: any };
 
   const { data: previousKeywords } = await supabase
     .from("seo_keyword_rankings")
     .select("*")
-    .eq("date", prevDateStr);
+    .eq("date", prevDateStr) as { data: KeywordRecord[] | null; error: any };
 
   if (currentKeywords && previousKeywords) {
-    const prevMap = new Map(previousKeywords.map((k) => [k.query, k]));
+    const prevMap = new Map((previousKeywords as KeywordRecord[]).map((k) => [k.query, k]));
 
-    for (const current of currentKeywords) {
+    for (const current of (currentKeywords as KeywordRecord[])) {
       const prev = prevMap.get(current.query);
 
       if (!prev) {
@@ -244,7 +328,7 @@ async function generateAlerts(): Promise<number> {
           // Gained 5+ positions
           alerts.push({
             type: "position_gain",
-            severity: positionDiff >= 10 ? "info" : "info",
+            severity: "info",
             message: `"${current.query}" improved ${positionDiff.toFixed(1)} positions (${prev.position.toFixed(1)} → ${current.position.toFixed(1)})`,
             data: {
               query: current.query,
@@ -273,8 +357,8 @@ async function generateAlerts(): Promise<number> {
     }
 
     // Check for lost keywords (were ranking, now gone)
-    for (const prev of previousKeywords) {
-      const current = currentKeywords.find((k) => k.query === prev.query);
+    for (const prev of (previousKeywords as KeywordRecord[])) {
+      const current = (currentKeywords as KeywordRecord[]).find((k) => k.query === prev.query);
       if (!current && prev.position <= 20 && prev.impressions >= 100) {
         alerts.push({
           type: "lost_keyword",
@@ -294,17 +378,17 @@ async function generateAlerts(): Promise<number> {
   const { data: currentPages } = await supabase
     .from("seo_page_performance")
     .select("*")
-    .eq("date", latestDate);
+    .eq("date", latestDate) as { data: PageRecord[] | null; error: any };
 
   const { data: previousPages } = await supabase
     .from("seo_page_performance")
     .select("*")
-    .eq("date", prevDateStr);
+    .eq("date", prevDateStr) as { data: PageRecord[] | null; error: any };
 
   if (currentPages && previousPages) {
-    const prevPageMap = new Map(previousPages.map((p) => [p.page_url, p]));
+    const prevPageMap = new Map((previousPages as PageRecord[]).map((p) => [p.page_url, p]));
 
-    for (const current of currentPages) {
+    for (const current of (currentPages as PageRecord[])) {
       const prev = prevPageMap.get(current.page_url);
 
       if (prev && prev.clicks > 0) {
@@ -344,7 +428,7 @@ async function generateAlerts(): Promise<number> {
   // Insert alerts (skip if no alerts)
   if (alerts.length === 0) return 0;
 
-  const { error } = await supabase.from("seo_alerts").insert(alerts);
+  const { error } = await supabase.from("seo_alerts").insert(alerts as never[]);
   if (error) throw error;
 
   return alerts.length;
