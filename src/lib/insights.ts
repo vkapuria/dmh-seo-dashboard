@@ -513,35 +513,38 @@ async function generateCannibalizationInsights(
 }
 
 /**
- * Quick Win: Content Refresh Needed (Declining pages that were top performers)
+ * Quick Win: Content Refresh Needed (Declining pages - period over period)
  * Priority: High | Category: Content | Type: Action
+ * Compares last 28 days vs previous 28 days (same as GSC default)
  */
 async function generateContentRefreshInsights(
   latestDate: string
 ): Promise<InsightInput[]> {
   const insights: InsightInput[] = [];
 
-  const ninetyDaysAgo = new Date(latestDate);
-  ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
-  const ninetyDaysAgoStr = ninetyDaysAgo.toISOString().split("T")[0];
+  // Use 28-day periods to match GSC default view
+  const twentyEightDaysAgo = new Date(latestDate);
+  twentyEightDaysAgo.setDate(twentyEightDaysAgo.getDate() - 28);
+  const twentyEightDaysAgoStr = twentyEightDaysAgo.toISOString().split("T")[0];
 
-  const thirtyDaysAgo = new Date(latestDate);
-  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-  const thirtyDaysAgoStr = thirtyDaysAgo.toISOString().split("T")[0];
+  const fiftySixDaysAgo = new Date(latestDate);
+  fiftySixDaysAgo.setDate(fiftySixDaysAgo.getDate() - 56);
+  const fiftySixDaysAgoStr = fiftySixDaysAgo.toISOString().split("T")[0];
 
-  // Get pages with declining performance
+  // Get pages - recent 28 days
   const { data: recentData } = await supabase
     .from("seo_page_performance")
     .select("page_url, clicks, impressions")
-    .gte("date", thirtyDaysAgoStr)
+    .gte("date", twentyEightDaysAgoStr)
     .lte("date", latestDate)
     .neq("date", EXCLUDED_DATE);
 
+  // Get pages - previous 28 days (for proper period-over-period comparison)
   const { data: oldData } = await supabase
     .from("seo_page_performance")
     .select("page_url, clicks, impressions")
-    .gte("date", ninetyDaysAgoStr)
-    .lt("date", thirtyDaysAgoStr)
+    .gte("date", fiftySixDaysAgoStr)
+    .lt("date", twentyEightDaysAgoStr)
     .neq("date", EXCLUDED_DATE);
 
   const recentPages = recentData as { page_url: string; clicks: number; impressions: number }[] | null;
@@ -570,28 +573,30 @@ async function generateContentRefreshInsights(
   for (const [pageUrl, recent] of recentMap) {
     const old = oldMap.get(pageUrl);
 
-    if (old && old.clicks > 20) {
+    if (old && old.clicks > 10) {
       const clicksChange = (recent.clicks - old.clicks) / old.clicks;
+      const impressionsChange = old.impressions > 0 ? (recent.impressions - old.impressions) / old.impressions : 0;
 
       if (clicksChange < -0.3) { // 30%+ decline
         insights.push({
           type: "action",
-          priority: old.clicks > 100 ? "high" : "medium",
+          priority: old.clicks > 50 ? "high" : "medium",
           category: "content",
           title: "Content Refresh Needed",
-          description: `${pageUrl} has lost ${Math.abs(Math.round(clicksChange * 100))}% of its traffic over the past 90 days. It may need updated content or improved SEO.`,
+          description: `${pageUrl} has lost ${Math.abs(Math.round(clicksChange * 100))}% of clicks compared to the previous 28-day period. It may need updated content or improved SEO.`,
           suggested_action: "Update the content with fresh information, improve internal linking, and review keyword targeting.",
           evidence: [
-            { metric: "Recent Clicks (30d)", value: recent.clicks.toLocaleString() },
-            { metric: "Previous Clicks (30d)", value: old.clicks.toLocaleString() },
-            { metric: "Traffic Change", value: `${Math.round(clicksChange * 100)}%` },
+            { metric: "Last 28 Days Clicks", value: recent.clicks.toLocaleString() },
+            { metric: "Previous 28 Days Clicks", value: old.clicks.toLocaleString() },
+            { metric: "Click Change", value: `${Math.round(clicksChange * 100)}%` },
+            { metric: "Impression Change", value: `${Math.round(impressionsChange * 100)}%` },
           ],
           affected_items: [
             { type: "page", identifier: pageUrl, url: pageUrl },
           ],
           confidence_score: 0.8,
           insight_key: `content_refresh_${pageUrl}`,
-          metadata: { clicks_change: clicksChange },
+          metadata: { clicks_change: clicksChange, impressions_change: impressionsChange },
         });
       }
     }
@@ -666,6 +671,160 @@ async function generateRisingStarInsights(
     .slice(0, 5);
 }
 
+/**
+ * Visibility Growth Opportunity (High impressions but low CTR - conversion potential)
+ * Priority: Medium-High | Category: Keyword | Type: Opportunity
+ * Based on impressions, not just clicks
+ */
+async function generateVisibilityOpportunityInsights(
+  latestDate: string
+): Promise<InsightInput[]> {
+  const insights: InsightInput[] = [];
+
+  // Get keywords with high impressions but low CTR
+  const { data } = await supabase
+    .from("seo_keyword_rankings")
+    .select("*")
+    .eq("date", latestDate)
+    .gt("impressions", 500)
+    .lt("ctr", 0.02) // Less than 2% CTR
+    .order("impressions", { ascending: false })
+    .limit(20);
+
+  const keywords = data as KeywordRecord[] | null;
+  if (!keywords) return insights;
+
+  for (const kw of keywords) {
+    const potentialClicks = Math.round(kw.impressions * 0.05) - kw.clicks; // Target 5% CTR
+
+    if (potentialClicks > 20) {
+      insights.push({
+        type: "opportunity",
+        priority: kw.impressions > 2000 ? "high" : "medium",
+        category: "keyword",
+        title: `Visibility Opportunity: "${kw.query}"`,
+        description: `This keyword gets ${kw.impressions.toLocaleString()} impressions but only ${(kw.ctr * 100).toFixed(2)}% CTR. Improving the SERP appearance could capture ${potentialClicks}+ additional clicks.`,
+        suggested_action: "Improve title tag and meta description to increase click-through rate. Consider adding schema markup for rich snippets.",
+        evidence: [
+          { metric: "Monthly Impressions", value: kw.impressions.toLocaleString() },
+          { metric: "Current CTR", value: `${(kw.ctr * 100).toFixed(2)}%` },
+          { metric: "Current Clicks", value: kw.clicks.toLocaleString() },
+          { metric: "Position", value: kw.position.toFixed(1) },
+          { metric: "Potential Additional Clicks", value: `+${potentialClicks}` },
+        ],
+        affected_items: [
+          { type: "keyword", identifier: kw.query, url: kw.page_url || undefined },
+        ],
+        impact_estimate: {
+          metric: "clicks",
+          potential_gain: potentialClicks,
+          unit: "clicks/month",
+          confidence: 0.6,
+        },
+        confidence_score: 0.75,
+        insight_key: `visibility_opportunity_${kw.query}`,
+        metadata: { impressions: kw.impressions, ctr: kw.ctr },
+      });
+    }
+  }
+
+  return insights.slice(0, 5);
+}
+
+/**
+ * Visibility Decline Alert (Significant drop in impressions - threat)
+ * Priority: High | Category: Keyword | Type: Threat
+ * Based on impression changes, period over period
+ */
+async function generateVisibilityDeclineInsights(
+  latestDate: string
+): Promise<InsightInput[]> {
+  const insights: InsightInput[] = [];
+
+  // Use 28-day periods to match GSC
+  const twentyEightDaysAgo = new Date(latestDate);
+  twentyEightDaysAgo.setDate(twentyEightDaysAgo.getDate() - 28);
+  const twentyEightDaysAgoStr = twentyEightDaysAgo.toISOString().split("T")[0];
+
+  const fiftySixDaysAgo = new Date(latestDate);
+  fiftySixDaysAgo.setDate(fiftySixDaysAgo.getDate() - 56);
+  const fiftySixDaysAgoStr = fiftySixDaysAgo.toISOString().split("T")[0];
+
+  // Get recent 28 days data
+  const { data: recentData } = await supabase
+    .from("seo_keyword_rankings")
+    .select("query, impressions, clicks, position, page_url")
+    .gte("date", twentyEightDaysAgoStr)
+    .lte("date", latestDate)
+    .neq("date", EXCLUDED_DATE);
+
+  // Get previous 28 days data
+  const { data: oldData } = await supabase
+    .from("seo_keyword_rankings")
+    .select("query, impressions, clicks")
+    .gte("date", fiftySixDaysAgoStr)
+    .lt("date", twentyEightDaysAgoStr)
+    .neq("date", EXCLUDED_DATE);
+
+  const recentKeywords = recentData as { query: string; impressions: number; clicks: number; position: number; page_url: string | null }[] | null;
+  const oldKeywords = oldData as { query: string; impressions: number; clicks: number }[] | null;
+  if (!recentKeywords || !oldKeywords) return insights;
+
+  // Aggregate by query
+  const recentMap = new Map<string, { impressions: number; clicks: number; position: number; page_url: string | null }>();
+  const oldMap = new Map<string, { impressions: number; clicks: number }>();
+
+  for (const kw of recentKeywords) {
+    const existing = recentMap.get(kw.query) || { impressions: 0, clicks: 0, position: kw.position, page_url: kw.page_url };
+    existing.impressions += kw.impressions;
+    existing.clicks += kw.clicks;
+    recentMap.set(kw.query, existing);
+  }
+
+  for (const kw of oldKeywords) {
+    const existing = oldMap.get(kw.query) || { impressions: 0, clicks: 0 };
+    existing.impressions += kw.impressions;
+    existing.clicks += kw.clicks;
+    oldMap.set(kw.query, existing);
+  }
+
+  // Find keywords with significant impression decline
+  for (const [query, recent] of recentMap) {
+    const old = oldMap.get(query);
+
+    if (old && old.impressions > 200) {
+      const impressionChange = (recent.impressions - old.impressions) / old.impressions;
+
+      if (impressionChange < -0.4) { // 40%+ decline in impressions
+        insights.push({
+          type: "threat",
+          priority: old.impressions > 1000 ? "high" : "medium",
+          category: "keyword",
+          title: `Visibility Drop: "${query}"`,
+          description: `This keyword lost ${Math.abs(Math.round(impressionChange * 100))}% of impressions compared to the previous 28 days. This could indicate ranking loss or reduced search volume.`,
+          suggested_action: "Check current ranking position, analyze competitors, and review if search intent has changed.",
+          evidence: [
+            { metric: "Last 28 Days Impressions", value: recent.impressions.toLocaleString() },
+            { metric: "Previous 28 Days Impressions", value: old.impressions.toLocaleString() },
+            { metric: "Impression Change", value: `${Math.round(impressionChange * 100)}%` },
+            { metric: "Current Position", value: recent.position.toFixed(1) },
+          ],
+          affected_items: [
+            { type: "keyword", identifier: query, url: recent.page_url || undefined },
+          ],
+          confidence_score: 0.8,
+          insight_key: `visibility_decline_${query}`,
+          metadata: { impression_change: impressionChange },
+        });
+      }
+    }
+  }
+
+  return insights
+    .sort((a, b) => (a.metadata?.impression_change as number || 0) - (b.metadata?.impression_change as number || 0))
+    .slice(0, 5);
+}
+
 // ============================================
 // MAIN INSIGHT GENERATION
 // ============================================
@@ -702,6 +861,8 @@ export async function generateInsights(): Promise<{
       cannibalization,
       contentRefresh,
       risingStars,
+      visibilityOpportunity,
+      visibilityDecline,
     ] = await Promise.all([
       generateStrikeDistanceInsights(latestDate),
       generateCTROptimizationInsights(latestDate),
@@ -711,6 +872,8 @@ export async function generateInsights(): Promise<{
       generateCannibalizationInsights(latestDate),
       generateContentRefreshInsights(latestDate),
       generateRisingStarInsights(latestDate),
+      generateVisibilityOpportunityInsights(latestDate),
+      generateVisibilityDeclineInsights(latestDate),
     ]);
 
     const allInsights = [
@@ -722,6 +885,8 @@ export async function generateInsights(): Promise<{
       ...cannibalization,
       ...contentRefresh,
       ...risingStars,
+      ...visibilityOpportunity,
+      ...visibilityDecline,
     ];
 
     console.log(`Generated ${allInsights.length} raw insights`);
