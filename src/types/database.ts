@@ -2,6 +2,12 @@ export type PageType = "blog" | "tool" | "service" | "static" | "other";
 export type AlertType = "position_drop" | "position_gain" | "traffic_spike" | "traffic_drop" | "new_keyword" | "lost_keyword";
 export type AlertSeverity = "info" | "warning" | "critical";
 
+// Insight Types
+export type InsightType = "opportunity" | "threat" | "pattern" | "action";
+export type InsightPriority = "critical" | "high" | "medium" | "low";
+export type InsightCategory = "keyword" | "page" | "technical" | "content";
+export type InsightStatus = "active" | "dismissed" | "completed" | "expired";
+
 export interface DailyMetrics {
   id: string;
   date: string;
@@ -53,6 +59,63 @@ export interface SyncLog {
   status: "running" | "completed" | "failed";
   records_synced: number;
   error_message: string | null;
+}
+
+// Insight interfaces
+export interface InsightEvidence {
+  metric: string;
+  value: number | string;
+  context?: string;
+}
+
+export interface InsightAffectedItem {
+  type: "keyword" | "page";
+  identifier: string;
+  url?: string;
+}
+
+export interface InsightImpactEstimate {
+  metric: string;
+  potential_gain: number;
+  unit: string;
+  confidence: number;
+}
+
+export interface Insight {
+  id: string;
+  created_at: string;
+  updated_at: string;
+  type: InsightType;
+  priority: InsightPriority;
+  category: InsightCategory;
+  title: string;
+  description: string;
+  suggested_action: string | null;
+  evidence: InsightEvidence[];
+  affected_items: InsightAffectedItem[];
+  impact_estimate: InsightImpactEstimate | null;
+  confidence_score: number;
+  status: InsightStatus;
+  expires_at: string | null;
+  dismissed_at: string | null;
+  completed_at: string | null;
+  insight_key: string;
+  metadata: Record<string, unknown>;
+}
+
+export interface KeywordMetrics {
+  id: string;
+  query: string;
+  date: string;
+  position_7d_avg: number | null;
+  position_30d_avg: number | null;
+  clicks_7d_avg: number | null;
+  impressions_7d_avg: number | null;
+  position_trend_7d: number | null;
+  position_trend_30d: number | null;
+  position_volatility_7d: number | null;
+  position_volatility_30d: number | null;
+  created_at: string;
 }
 
 // Database schema type for Supabase

@@ -12,3 +12,9 @@ export function createServerSupabase() {
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
   return createClient<Database>(supabaseUrl, serviceRoleKey);
 }
+
+// Untyped server client for new tables not yet in Database type
+export function createUntypedServerSupabase() {
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+  return createClient(supabaseUrl, serviceRoleKey);
+}

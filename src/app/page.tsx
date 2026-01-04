@@ -1,13 +1,14 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { Sidebar } from "@/components/dashboard/sidebar";
+import { TopNav } from "@/components/dashboard/top-nav";
 import { MetricCard, MetricsRow } from "@/components/dashboard/metric-card";
 import { TrendChart, MultiTrendChart } from "@/components/dashboard/trend-chart";
 import { KeywordsTable, CompactKeywordList } from "@/components/dashboard/keywords-table";
 import { PagesTable, TypeBreakdown } from "@/components/dashboard/pages-table";
 import { TrackedKeywordsTable } from "@/components/dashboard/tracked-keywords";
 import { AlertsList, AlertSummary } from "@/components/dashboard/alerts-list";
+import { InsightsList, InsightsSummary } from "@/components/dashboard/insights-list";
 import { DimensionFilters, CountryBreakdown, DeviceBreakdown } from "@/components/dashboard/dimension-filters";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -27,7 +28,7 @@ import {
   Notification03Icon
 } from "@hugeicons/core-free-icons";
 
-type TabType = "overview" | "keywords" | "pages" | "tracked" | "alerts" | "settings";
+type TabType = "overview" | "keywords" | "pages" | "insights" | "tracked" | "alerts" | "settings";
 
 
 interface MetricsData {
@@ -141,10 +142,36 @@ interface SyncData {
   syncs: SyncItem[];
 }
 
+interface InsightItem {
+  id: string;
+  created_at: string;
+  type: "opportunity" | "threat" | "pattern" | "action";
+  priority: "critical" | "high" | "medium" | "low";
+  category: "keyword" | "page" | "technical" | "content";
+  title: string;
+  description: string;
+  suggested_action: string | null;
+  evidence: Array<{ metric: string; value: string | number; context?: string }>;
+  affected_items: Array<{ type: "keyword" | "page"; identifier: string; url?: string }>;
+  impact_estimate: { metric: string; potential_gain: number; unit: string; confidence: number } | null;
+  confidence_score: number;
+  status: string;
+}
+
+interface InsightsData {
+  insights: InsightItem[];
+  counts: {
+    total: number;
+    opportunity: number;
+    threat: number;
+    pattern: number;
+    action: number;
+    critical: number;
+    high: number;
+  };
+}
+
 export default function Dashboard() {
-  // Sidebar state
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  
   // -- UI STATE --
   const [activeTab, setActiveTab] = useState<TabType>("overview");
   const [days, setDays] = useState(28);
@@ -176,6 +203,8 @@ export default function Dashboard() {
   const [keywords, setKeywords] = useState<KeywordsData | null>(null);
   const [pages, setPages] = useState<PagesData | null>(null);
   const [alerts, setAlerts] = useState<AlertsData | null>(null);
+  const [insights, setInsights] = useState<InsightsData | null>(null);
+  const [isInsightsLoading, setIsInsightsLoading] = useState(false);
   const [syncStatus, setSyncStatus] = useState<SyncData | null>(null);
   const [dimensions, setDimensions] = useState<{
     countries: any[];
@@ -272,9 +301,25 @@ export default function Dashboard() {
     }
   }, [days]);
 
+  const fetchInsights = useCallback(async () => {
+    setIsInsightsLoading(true);
+    try {
+      const res = await fetch("/api/insights?limit=50");
+      if (res.ok) {
+        const data = await res.json();
+        setInsights(data);
+      }
+    } catch (error) {
+      console.error("Error fetching insights:", error);
+    } finally {
+      setIsInsightsLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     fetchData();
-  }, [fetchData]);
+    fetchInsights();
+  }, [fetchData, fetchInsights]);
 
   useEffect(() => {
     fetchTrackedKeywords();
@@ -365,7 +410,7 @@ export default function Dashboard() {
       const res = await fetch(`/api/sync?mode=${mode}`, { method: "POST" });
       const result = await res.json();
       if (result.success) {
-        await fetchData();
+        await Promise.all([fetchData(), fetchInsights()]);
       } else {
         alert(`Sync failed: ${result.error}`);
       }
@@ -462,6 +507,60 @@ export default function Dashboard() {
     }
   };
 
+  const handleDismissInsight = async (id: string) => {
+    try {
+      await fetch("/api/insights", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, action: "dismiss" }),
+      });
+      setInsights((prev) =>
+        prev
+          ? {
+              ...prev,
+              insights: prev.insights.filter((i) => i.id !== id),
+              counts: {
+                ...prev.counts,
+                total: prev.counts.total - 1,
+              },
+            }
+          : null
+      );
+    } catch (error) {
+      console.error("Error dismissing insight:", error);
+    }
+  };
+
+  const handleCompleteInsight = async (id: string) => {
+    try {
+      await fetch("/api/insights", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, action: "complete" }),
+      });
+      setInsights((prev) =>
+        prev
+          ? {
+              ...prev,
+              insights: prev.insights.filter((i) => i.id !== id),
+              counts: {
+                ...prev.counts,
+                total: prev.counts.total - 1,
+              },
+            }
+          : null
+      );
+    } catch (error) {
+      console.error("Error completing insight:", error);
+    }
+  };
+
+  const handleViewKeywordFromInsight = (query: string, pageUrl?: string) => {
+    const params = new URLSearchParams({ q: query });
+    if (pageUrl) params.set("page", pageUrl);
+    window.location.href = `/keyword?${params}`;
+  };
+
   const tabs = [
     { id: "overview" as const, label: "Overview", icon: Analytics01Icon },
     { id: "keywords" as const, label: "Keywords", icon: Search01Icon },
@@ -473,80 +572,21 @@ export default function Dashboard() {
   // -- RENDER --
   return (
     <div className="min-h-screen bg-[#f8f9fa]">
-      {/* Sidebar */}
-      <Sidebar
+      {/* Top Navigation */}
+      <TopNav
         activeTab={activeTab}
         onTabChange={setActiveTab}
-        isCollapsed={sidebarCollapsed}
-        onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
         alertCount={alerts?.unreadCounts.total || 0}
         trackedCount={trackedKeywords.length}
+        insightsCount={insights?.counts.total || 0}
+        days={days}
+        onDaysChange={setDays}
+        onSync={() => handleSync("daily")}
+        isSyncing={isSyncing}
       />
 
       {/* Main Content */}
-      <div className={cn(
-        "transition-all duration-300",
-        sidebarCollapsed ? "ml-16" : "ml-56"
-      )}>
-        {/* Top Bar */}
-        <header className="sticky top-0 z-30 border-b border-gray-200 bg-white">
-          <div className="flex h-14 items-center justify-between px-6">
-            {/* Left: Page Title */}
-            <h1 className="text-lg font-semibold text-gray-900 capitalize">
-              {activeTab}
-            </h1>
-
-            {/* Right: Controls */}
-            <div className="flex items-center gap-3">
-              {/* Date Selector */}
-              <div className="relative">
-                <button
-                  onClick={(e) => { e.stopPropagation(); setShowDateMenu(!showDateMenu); }}
-                  className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:border-gray-300 hover:bg-gray-50 transition-colors"
-                >
-                  <HugeiconsIcon icon={Calendar03Icon} size={16} className="text-gray-400" />
-                  <span>Last {days}d</span>
-                  <HugeiconsIcon icon={ArrowDown01Icon} size={14} className="text-gray-400" />
-                </button>
-                
-                {showDateMenu && (
-                  <div className="absolute right-0 top-full mt-1 w-40 rounded-lg border border-gray-200 bg-white py-1 shadow-lg z-50 animate-fade-in">
-                    {[7, 28, 90, 180, 365, 480].map((d) => (
-                      <button
-                        key={d}
-                        onClick={() => { setDays(d); setShowDateMenu(false); }}
-                        className={cn(
-                          "w-full px-3 py-1.5 text-left text-sm hover:bg-gray-50",
-                          days === d ? "bg-[#FF6B35]/10 text-[#FF6B35] font-medium" : "text-gray-700"
-                        )}
-                      >
-                        {d <= 30 ? `${d} days` : d === 90 ? "3 months" : d === 180 ? "6 months" : d === 365 ? "12 months" : "16 months"}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* Sync Button */}
-              <Button
-                onClick={() => handleSync("daily")}
-                disabled={isSyncing}
-                size="sm"
-                className="h-9 gap-2 bg-[#FF6B35] hover:bg-[#E55A2B] text-white border-0"
-              >
-                <HugeiconsIcon
-                  icon={ArrowReloadHorizontalIcon}
-                  size={16}
-                  className={isSyncing ? "animate-spin" : ""}
-                />
-                Sync
-              </Button>
-            </div>
-          </div>
-        </header>
-
-        {/* Page Content */}
-        <main className="p-6">
+      <main className="max-w-[1600px] mx-auto p-6">
           {isLoading ? (
             <div className="flex h-96 flex-col items-center justify-center gap-3">
               <HugeiconsIcon icon={Loading03Icon} size={32} className="animate-spin text-[#FF6B35]" />
@@ -594,14 +634,22 @@ export default function Dashboard() {
                     />
                   )}
 
-                  {/* Gainers/Losers/New */}
-                  {filteredKeywordsData && (
-                    <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                      <CompactKeywordList keywords={filteredKeywordsData.gainers} title="Top Gainers" type="gainers" />
-                      <CompactKeywordList keywords={filteredKeywordsData.losers} title="Top Losers" type="losers" />
-                      <CompactKeywordList keywords={filteredKeywordsData.newKeywords} title="New Rankings" type="new" />
-                    </div>
-                  )}
+                  {/* Insights Summary + Gainers/Losers */}
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+                    {insights && insights.counts.total > 0 && (
+                      <InsightsSummary
+                        counts={insights.counts}
+                        onViewAll={() => setActiveTab("insights")}
+                      />
+                    )}
+                    {filteredKeywordsData && (
+                      <>
+                        <CompactKeywordList keywords={filteredKeywordsData.gainers} title="Top Gainers" type="gainers" />
+                        <CompactKeywordList keywords={filteredKeywordsData.losers} title="Top Losers" type="losers" />
+                        <CompactKeywordList keywords={filteredKeywordsData.newKeywords} title="New Rankings" type="new" />
+                      </>
+                    )}
+                  </div>
 
                   {/* Page Performance */}
                   {pages && (
@@ -787,6 +835,19 @@ export default function Dashboard() {
                 </div>
               )}
 
+              {/* INSIGHTS TAB */}
+              {activeTab === "insights" && (
+                <div className="space-y-4 animate-fade-in">
+                  <InsightsList
+                    insights={insights?.insights || []}
+                    onDismiss={handleDismissInsight}
+                    onComplete={handleCompleteInsight}
+                    onViewKeyword={handleViewKeywordFromInsight}
+                    isLoading={isInsightsLoading}
+                  />
+                </div>
+              )}
+
               {/* TRACKED TAB */}
               {activeTab === "tracked" && (
                 <div className="space-y-4 animate-fade-in">
@@ -899,7 +960,6 @@ export default function Dashboard() {
             </>
           )}
         </main>
-      </div>
     </div>
   );
 }
