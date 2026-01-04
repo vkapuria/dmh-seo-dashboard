@@ -739,31 +739,56 @@ export async function generateInsights(): Promise<{
 
     const expiredCount = (expiredInsights as { id: string }[] | null)?.length || 0;
 
-    // Upsert new insights
+    // Insert or update insights (can't use upsert with partial unique index)
     let insertedCount = 0;
 
     for (const insight of allInsights) {
-      const { error } = await untypedSupabase.from("seo_insights").upsert(
-        {
-          type: insight.type,
-          priority: insight.priority,
-          category: insight.category,
-          title: insight.title,
-          description: insight.description,
-          suggested_action: insight.suggested_action,
-          evidence: insight.evidence,
-          affected_items: insight.affected_items,
-          impact_estimate: insight.impact_estimate || null,
-          confidence_score: insight.confidence_score || 0.8,
-          status: "active",
-          insight_key: insight.insight_key,
-          metadata: insight.metadata || {},
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: "insight_key", ignoreDuplicates: false }
-      );
+      // Check if active insight with this key already exists
+      const { data: existing } = await untypedSupabase
+        .from("seo_insights")
+        .select("id")
+        .eq("insight_key", insight.insight_key)
+        .eq("status", "active")
+        .single();
 
-      if (!error) insertedCount++;
+      const insightData = {
+        type: insight.type,
+        priority: insight.priority,
+        category: insight.category,
+        title: insight.title,
+        description: insight.description,
+        suggested_action: insight.suggested_action,
+        evidence: insight.evidence,
+        affected_items: insight.affected_items,
+        impact_estimate: insight.impact_estimate || null,
+        confidence_score: insight.confidence_score || 0.8,
+        status: "active",
+        insight_key: insight.insight_key,
+        metadata: insight.metadata || {},
+        updated_at: new Date().toISOString(),
+      };
+
+      let error;
+      if (existing?.id) {
+        // Update existing insight
+        const result = await untypedSupabase
+          .from("seo_insights")
+          .update(insightData)
+          .eq("id", existing.id);
+        error = result.error;
+      } else {
+        // Insert new insight
+        const result = await untypedSupabase
+          .from("seo_insights")
+          .insert(insightData);
+        error = result.error;
+      }
+
+      if (error) {
+        console.error(`Failed to ${existing ? 'update' : 'insert'} insight "${insight.title}":`, error.message, error.details);
+      } else {
+        insertedCount++;
+      }
     }
 
     console.log(`Inserted/updated ${insertedCount} insights, expired ${expiredCount}`);
