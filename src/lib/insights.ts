@@ -512,6 +512,14 @@ async function generateCannibalizationInsights(
   return insights.slice(0, 5);
 }
 
+// Helper to format date range
+function formatDateRange(startDate: string, endDate: string): string {
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+  const options: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'short' };
+  return `${start.toLocaleDateString('en-US', options)} - ${end.toLocaleDateString('en-US', options)}`;
+}
+
 /**
  * Quick Win: Content Refresh Needed (Declining pages - period over period)
  * Priority: High | Category: Content | Type: Action
@@ -531,42 +539,87 @@ async function generateContentRefreshInsights(
   fiftySixDaysAgo.setDate(fiftySixDaysAgo.getDate() - 56);
   const fiftySixDaysAgoStr = fiftySixDaysAgo.toISOString().split("T")[0];
 
-  // Get pages - recent 28 days
+  // Date range labels
+  const recentPeriod = formatDateRange(twentyEightDaysAgoStr, latestDate);
+  const previousPeriod = formatDateRange(fiftySixDaysAgoStr, twentyEightDaysAgoStr);
+
+  // Get pages - recent 28 days (including position)
   const { data: recentData } = await supabase
     .from("seo_page_performance")
-    .select("page_url, clicks, impressions")
+    .select("page_url, clicks, impressions, position")
     .gte("date", twentyEightDaysAgoStr)
     .lte("date", latestDate)
     .neq("date", EXCLUDED_DATE);
 
-  // Get pages - previous 28 days (for proper period-over-period comparison)
+  // Get pages - previous 28 days
   const { data: oldData } = await supabase
     .from("seo_page_performance")
-    .select("page_url, clicks, impressions")
+    .select("page_url, clicks, impressions, position")
     .gte("date", fiftySixDaysAgoStr)
     .lt("date", twentyEightDaysAgoStr)
     .neq("date", EXCLUDED_DATE);
 
-  const recentPages = recentData as { page_url: string; clicks: number; impressions: number }[] | null;
-  const oldPages = oldData as { page_url: string; clicks: number; impressions: number }[] | null;
+  // Get keyword counts per page - recent
+  const { data: recentKeywords } = await supabase
+    .from("seo_keyword_rankings")
+    .select("page_url, query")
+    .gte("date", twentyEightDaysAgoStr)
+    .lte("date", latestDate)
+    .neq("date", EXCLUDED_DATE);
+
+  // Get keyword counts per page - previous
+  const { data: oldKeywords } = await supabase
+    .from("seo_keyword_rankings")
+    .select("page_url, query")
+    .gte("date", fiftySixDaysAgoStr)
+    .lt("date", twentyEightDaysAgoStr)
+    .neq("date", EXCLUDED_DATE);
+
+  const recentPages = recentData as { page_url: string; clicks: number; impressions: number; position: number }[] | null;
+  const oldPages = oldData as { page_url: string; clicks: number; impressions: number; position: number }[] | null;
+  const recentKws = recentKeywords as { page_url: string; query: string }[] | null;
+  const oldKws = oldKeywords as { page_url: string; query: string }[] | null;
+
   if (!recentPages || !oldPages) return insights;
 
   // Aggregate by page
-  const recentMap = new Map<string, { clicks: number; impressions: number }>();
-  const oldMap = new Map<string, { clicks: number; impressions: number }>();
+  const recentMap = new Map<string, { clicks: number; impressions: number; positions: number[]; days: number }>();
+  const oldMap = new Map<string, { clicks: number; impressions: number; positions: number[]; days: number }>();
 
   for (const p of recentPages) {
-    const existing = recentMap.get(p.page_url) || { clicks: 0, impressions: 0 };
+    const existing = recentMap.get(p.page_url) || { clicks: 0, impressions: 0, positions: [], days: 0 };
     existing.clicks += p.clicks;
     existing.impressions += p.impressions;
+    existing.positions.push(p.position);
+    existing.days++;
     recentMap.set(p.page_url, existing);
   }
 
   for (const p of oldPages) {
-    const existing = oldMap.get(p.page_url) || { clicks: 0, impressions: 0 };
+    const existing = oldMap.get(p.page_url) || { clicks: 0, impressions: 0, positions: [], days: 0 };
     existing.clicks += p.clicks;
     existing.impressions += p.impressions;
+    existing.positions.push(p.position);
+    existing.days++;
     oldMap.set(p.page_url, existing);
+  }
+
+  // Count unique keywords per page
+  const recentKeywordCount = new Map<string, Set<string>>();
+  const oldKeywordCount = new Map<string, Set<string>>();
+
+  for (const kw of recentKws || []) {
+    if (!kw.page_url) continue;
+    const existing = recentKeywordCount.get(kw.page_url) || new Set();
+    existing.add(kw.query);
+    recentKeywordCount.set(kw.page_url, existing);
+  }
+
+  for (const kw of oldKws || []) {
+    if (!kw.page_url) continue;
+    const existing = oldKeywordCount.get(kw.page_url) || new Set();
+    existing.add(kw.query);
+    oldKeywordCount.set(kw.page_url, existing);
   }
 
   // Find declining pages
@@ -577,26 +630,54 @@ async function generateContentRefreshInsights(
       const clicksChange = (recent.clicks - old.clicks) / old.clicks;
       const impressionsChange = old.impressions > 0 ? (recent.impressions - old.impressions) / old.impressions : 0;
 
+      // Calculate average positions
+      const recentAvgPos = recent.positions.length > 0
+        ? recent.positions.reduce((a, b) => a + b, 0) / recent.positions.length
+        : 0;
+      const oldAvgPos = old.positions.length > 0
+        ? old.positions.reduce((a, b) => a + b, 0) / old.positions.length
+        : 0;
+      const positionChange = recentAvgPos - oldAvgPos;
+
+      // Keyword counts
+      const recentKwCount = recentKeywordCount.get(pageUrl)?.size || 0;
+      const oldKwCount = oldKeywordCount.get(pageUrl)?.size || 0;
+      const kwChange = recentKwCount - oldKwCount;
+
       if (clicksChange < -0.3) { // 30%+ decline
         insights.push({
           type: "action",
           priority: old.clicks > 50 ? "high" : "medium",
           category: "content",
           title: "Content Refresh Needed",
-          description: `${pageUrl} has lost ${Math.abs(Math.round(clicksChange * 100))}% of clicks compared to the previous 28-day period. It may need updated content or improved SEO.`,
+          description: `${pageUrl} has lost ${Math.abs(Math.round(clicksChange * 100))}% of clicks compared to the previous period. It may need updated content or improved SEO.`,
           suggested_action: "Update the content with fresh information, improve internal linking, and review keyword targeting.",
           evidence: [
-            { metric: "Last 28 Days Clicks", value: recent.clicks.toLocaleString() },
-            { metric: "Previous 28 Days Clicks", value: old.clicks.toLocaleString() },
-            { metric: "Click Change", value: `${Math.round(clicksChange * 100)}%` },
-            { metric: "Impression Change", value: `${Math.round(impressionsChange * 100)}%` },
+            // Clicks row
+            { metric: `Clicks (${recentPeriod})`, value: `${recent.clicks.toLocaleString()}` },
+            { metric: `Clicks (${previousPeriod})`, value: `${old.clicks.toLocaleString()}` },
+            { metric: "Click Change", value: `${old.clicks} → ${recent.clicks} (${clicksChange > 0 ? '+' : ''}${Math.round(clicksChange * 100)}%)` },
+            // Impressions row
+            { metric: `Impressions (${recentPeriod})`, value: `${recent.impressions.toLocaleString()}` },
+            { metric: `Impressions (${previousPeriod})`, value: `${old.impressions.toLocaleString()}` },
+            { metric: "Impression Change", value: `${old.impressions.toLocaleString()} → ${recent.impressions.toLocaleString()} (${impressionsChange > 0 ? '+' : ''}${Math.round(impressionsChange * 100)}%)` },
+            // Position & Keywords
+            { metric: "Avg Position Change", value: `${oldAvgPos.toFixed(1)} → ${recentAvgPos.toFixed(1)} (${positionChange > 0 ? '+' : ''}${positionChange.toFixed(1)})` },
+            { metric: "Keywords Ranking", value: `${oldKwCount} → ${recentKwCount} (${kwChange > 0 ? '+' : ''}${kwChange})` },
           ],
           affected_items: [
             { type: "page", identifier: pageUrl, url: pageUrl },
           ],
           confidence_score: 0.8,
           insight_key: `content_refresh_${pageUrl}`,
-          metadata: { clicks_change: clicksChange, impressions_change: impressionsChange },
+          metadata: {
+            clicks_change: clicksChange,
+            impressions_change: impressionsChange,
+            position_change: positionChange,
+            keyword_change: kwChange,
+            recent_period: recentPeriod,
+            previous_period: previousPeriod,
+          },
         });
       }
     }

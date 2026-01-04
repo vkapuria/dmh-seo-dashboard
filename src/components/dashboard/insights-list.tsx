@@ -12,7 +12,6 @@ import {
   ArrowDown01Icon,
   Cancel01Icon,
   CheckmarkCircle02Icon,
-  LinkSquare01Icon,
   ArrowRight01Icon,
 } from "@hugeicons/core-free-icons";
 import type { InsightType, InsightPriority, InsightCategory } from "@/types/database";
@@ -64,42 +63,38 @@ const typeConfig = {
   opportunity: {
     icon: Target01Icon,
     label: "Opportunity",
-    bgColor: "bg-emerald-50",
-    borderColor: "border-emerald-200",
-    iconColor: "text-emerald-600",
-    badgeColor: "bg-emerald-100 text-emerald-700",
+    iconColor: "text-emerald-400",
+    badgeColor: "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30",
+    accentColor: "border-l-emerald-500",
   },
   threat: {
     icon: Alert02Icon,
     label: "Threat",
-    bgColor: "bg-red-50",
-    borderColor: "border-red-200",
-    iconColor: "text-red-600",
-    badgeColor: "bg-red-100 text-red-700",
+    iconColor: "text-red-400",
+    badgeColor: "bg-red-500/20 text-red-400 border border-red-500/30",
+    accentColor: "border-l-red-500",
   },
   pattern: {
     icon: AnalysisTextLinkIcon,
     label: "Pattern",
-    bgColor: "bg-blue-50",
-    borderColor: "border-blue-200",
-    iconColor: "text-blue-600",
-    badgeColor: "bg-blue-100 text-blue-700",
+    iconColor: "text-blue-400",
+    badgeColor: "bg-blue-500/20 text-blue-400 border border-blue-500/30",
+    accentColor: "border-l-blue-500",
   },
   action: {
     icon: CheckmarkBadge02Icon,
     label: "Action",
-    bgColor: "bg-purple-50",
-    borderColor: "border-purple-200",
-    iconColor: "text-purple-600",
-    badgeColor: "bg-purple-100 text-purple-700",
+    iconColor: "text-amber-400",
+    badgeColor: "bg-amber-500/20 text-amber-400 border border-amber-500/30",
+    accentColor: "border-l-amber-500",
   },
 };
 
 const priorityConfig = {
   critical: { label: "Critical", color: "bg-red-600 text-white" },
-  high: { label: "High", color: "bg-orange-500 text-white" },
-  medium: { label: "Medium", color: "bg-yellow-500 text-white" },
-  low: { label: "Low", color: "bg-gray-400 text-white" },
+  high: { label: "High", color: "bg-orange-600 text-white" },
+  medium: { label: "Medium", color: "bg-slate-600 text-slate-200" },
+  low: { label: "Low", color: "bg-slate-700 text-slate-300" },
 };
 
 export function InsightsList({
@@ -130,7 +125,7 @@ export function InsightsList({
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#FF6B35]" />
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-500" />
       </div>
     );
   }
@@ -138,11 +133,11 @@ export function InsightsList({
   return (
     <div className="space-y-4">
       {/* Filters */}
-      <div className="flex flex-wrap items-center gap-3 p-4 bg-white rounded-xl border border-gray-200">
+      <div className="flex flex-wrap items-center gap-3 p-4 bg-slate-800/50 rounded-lg border border-slate-700/50">
         {/* Type Filter */}
         <div className="flex items-center gap-2">
-          <span className="text-xs font-medium text-gray-500 uppercase">Type:</span>
-          <div className="flex items-center rounded-lg bg-gray-100 p-0.5">
+          <span className="text-xs font-medium text-slate-400 uppercase tracking-wide">Type:</span>
+          <div className="flex items-center rounded-lg bg-slate-900/50 p-0.5">
             {(["all", "threat", "opportunity", "pattern", "action"] as const).map((type) => (
               <button
                 key={type}
@@ -150,8 +145,8 @@ export function InsightsList({
                 className={cn(
                   "px-3 py-1.5 text-xs font-medium rounded-md transition-all capitalize",
                   filterType === type
-                    ? "bg-white text-gray-900 shadow-sm"
-                    : "text-gray-500 hover:text-gray-700"
+                    ? "bg-slate-700 text-white shadow-sm"
+                    : "text-slate-400 hover:text-slate-200"
                 )}
               >
                 {type === "all" ? "All" : type}
@@ -162,8 +157,8 @@ export function InsightsList({
 
         {/* Priority Filter */}
         <div className="flex items-center gap-2">
-          <span className="text-xs font-medium text-gray-500 uppercase">Priority:</span>
-          <div className="flex items-center rounded-lg bg-gray-100 p-0.5">
+          <span className="text-xs font-medium text-slate-400 uppercase tracking-wide">Priority:</span>
+          <div className="flex items-center rounded-lg bg-slate-900/50 p-0.5">
             {(["all", "critical", "high", "medium", "low"] as const).map((priority) => (
               <button
                 key={priority}
@@ -171,8 +166,8 @@ export function InsightsList({
                 className={cn(
                   "px-3 py-1.5 text-xs font-medium rounded-md transition-all capitalize",
                   filterPriority === priority
-                    ? "bg-white text-gray-900 shadow-sm"
-                    : "text-gray-500 hover:text-gray-700"
+                    ? "bg-slate-700 text-white shadow-sm"
+                    : "text-slate-400 hover:text-slate-200"
                 )}
               >
                 {priority === "all" ? "All" : priority}
@@ -181,18 +176,18 @@ export function InsightsList({
           </div>
         </div>
 
-        <div className="ml-auto text-sm text-gray-500">
-          <span className="font-medium text-gray-900">{sortedInsights.length}</span> insights
+        <div className="ml-auto text-sm text-slate-400">
+          <span className="font-medium text-white">{sortedInsights.length}</span> insights
         </div>
       </div>
 
       {/* Insights Grid */}
       {sortedInsights.length === 0 ? (
-        <div className="text-center py-12 bg-white rounded-xl border border-gray-200">
-          <p className="text-gray-500">No insights found matching your filters.</p>
+        <div className="text-center py-12 bg-slate-800/50 rounded-lg border border-slate-700/50">
+          <p className="text-slate-400">No insights found matching your filters.</p>
         </div>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-1">
+        <div className="space-y-3">
           {sortedInsights.map((insight) => (
             <InsightCard
               key={insight.id}
@@ -228,41 +223,56 @@ function InsightCard({
   const config = typeConfig[insight.type];
   const priorityCfg = priorityConfig[insight.priority];
 
+  // Separate evidence into categories for better display
+  const clicksEvidence = insight.evidence.filter(e =>
+    e.metric.toLowerCase().includes('click') && !e.metric.toLowerCase().includes('change')
+  );
+  const impressionsEvidence = insight.evidence.filter(e =>
+    e.metric.toLowerCase().includes('impression') && !e.metric.toLowerCase().includes('change')
+  );
+  const changeEvidence = insight.evidence.filter(e =>
+    e.metric.toLowerCase().includes('change')
+  );
+  const otherEvidence = insight.evidence.filter(e =>
+    !e.metric.toLowerCase().includes('click') &&
+    !e.metric.toLowerCase().includes('impression')
+  );
+
   return (
     <div
       className={cn(
-        "rounded-xl border-2 transition-all overflow-hidden",
-        config.bgColor,
-        config.borderColor
+        "rounded-lg bg-slate-800/80 border border-slate-700/50 transition-all overflow-hidden",
+        "border-l-4",
+        config.accentColor
       )}
     >
       {/* Header */}
       <div
-        className="flex items-start gap-3 p-4 cursor-pointer"
+        className="flex items-start gap-3 p-4 cursor-pointer hover:bg-slate-700/30 transition-colors"
         onClick={onToggleExpand}
       >
         {/* Icon */}
-        <div className={cn("p-2 rounded-lg bg-white/80", config.iconColor)}>
+        <div className={cn("p-2 rounded-lg bg-slate-900/50", config.iconColor)}>
           <HugeiconsIcon icon={config.icon} size={20} />
         </div>
 
         {/* Content */}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap mb-1">
-            <span className={cn("text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded", config.badgeColor)}>
+            <span className={cn("text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded", config.badgeColor)}>
               {config.label}
             </span>
-            <span className={cn("text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded", priorityCfg.color)}>
+            <span className={cn("text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded", priorityCfg.color)}>
               {priorityCfg.label}
             </span>
-            <span className="text-[10px] text-gray-500 ml-auto">
+            <span className="text-[10px] text-slate-500 ml-auto">
               {new Date(insight.created_at).toLocaleDateString()}
             </span>
           </div>
-          <h3 className="font-semibold text-gray-900 text-sm leading-tight">
+          <h3 className="font-semibold text-white text-sm leading-tight">
             {insight.title}
           </h3>
-          <p className="text-sm text-gray-600 mt-1 line-clamp-2">
+          <p className="text-sm text-slate-400 mt-1 line-clamp-2">
             {insight.description}
           </p>
         </div>
@@ -271,40 +281,115 @@ function InsightCard({
         <HugeiconsIcon
           icon={isExpanded ? ArrowUp01Icon : ArrowDown01Icon}
           size={18}
-          className="text-gray-400 flex-shrink-0 mt-1"
+          className="text-slate-500 flex-shrink-0 mt-1"
         />
       </div>
 
       {/* Expanded Content */}
       {isExpanded && (
-        <div className="px-4 pb-4 space-y-4 border-t border-gray-200/50 pt-4">
-          {/* Evidence */}
+        <div className="px-4 pb-4 space-y-4 border-t border-slate-700/50 pt-4">
+          {/* Evidence - Structured Layout */}
           {insight.evidence.length > 0 && (
-            <div>
-              <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+            <div className="space-y-3">
+              <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
                 Evidence
               </h4>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                {insight.evidence.map((ev, idx) => (
-                  <div key={idx} className="bg-white/60 rounded-lg p-2">
-                    <p className="text-[10px] text-gray-500 uppercase">{ev.metric}</p>
-                    <p className="text-sm font-semibold text-gray-900">{ev.value}</p>
+
+              {/* Clicks Row */}
+              {clicksEvidence.length > 0 && (
+                <div className="bg-slate-900/50 rounded-lg p-3 border border-slate-700/30">
+                  <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-2 font-medium">Clicks</div>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                    {clicksEvidence.map((ev, idx) => (
+                      <div key={idx}>
+                        <p className="text-[10px] text-slate-500">{ev.metric}</p>
+                        <p className="text-sm font-semibold text-white">{ev.value}</p>
+                      </div>
+                    ))}
+                    {changeEvidence.filter(e => e.metric.toLowerCase().includes('click')).map((ev, idx) => (
+                      <div key={`change-${idx}`}>
+                        <p className="text-[10px] text-slate-500">{ev.metric}</p>
+                        <p className={cn(
+                          "text-sm font-semibold",
+                          String(ev.value).includes('-') ? "text-red-400" : "text-emerald-400"
+                        )}>{ev.value}</p>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
+                </div>
+              )}
+
+              {/* Impressions Row */}
+              {impressionsEvidence.length > 0 && (
+                <div className="bg-slate-900/50 rounded-lg p-3 border border-slate-700/30">
+                  <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-2 font-medium">Impressions</div>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                    {impressionsEvidence.map((ev, idx) => (
+                      <div key={idx}>
+                        <p className="text-[10px] text-slate-500">{ev.metric}</p>
+                        <p className="text-sm font-semibold text-white">{ev.value}</p>
+                      </div>
+                    ))}
+                    {changeEvidence.filter(e => e.metric.toLowerCase().includes('impression')).map((ev, idx) => (
+                      <div key={`change-${idx}`}>
+                        <p className="text-[10px] text-slate-500">{ev.metric}</p>
+                        <p className={cn(
+                          "text-sm font-semibold",
+                          String(ev.value).includes('-') ? "text-red-400" : "text-emerald-400"
+                        )}>{ev.value}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Other metrics (Position, Keywords, etc.) */}
+              {otherEvidence.length > 0 && (
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                  {otherEvidence.map((ev, idx) => (
+                    <div key={idx} className="bg-slate-900/50 rounded-lg p-3 border border-slate-700/30">
+                      <p className="text-[10px] text-slate-500 uppercase">{ev.metric}</p>
+                      <p className={cn(
+                        "text-sm font-semibold",
+                        String(ev.value).includes('-') && !ev.metric.toLowerCase().includes('position')
+                          ? "text-red-400"
+                          : String(ev.value).includes('+')
+                            ? "text-emerald-400"
+                            : "text-white"
+                      )}>{ev.value}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Fallback for other insights without structured evidence */}
+              {clicksEvidence.length === 0 && impressionsEvidence.length === 0 && (
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                  {insight.evidence.map((ev, idx) => (
+                    <div key={idx} className="bg-slate-900/50 rounded-lg p-3 border border-slate-700/30">
+                      <p className="text-[10px] text-slate-500 uppercase">{ev.metric}</p>
+                      <p className={cn(
+                        "text-sm font-semibold",
+                        String(ev.value).includes('-') ? "text-red-400" :
+                        String(ev.value).includes('+') ? "text-emerald-400" : "text-white"
+                      )}>{ev.value}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
           {/* Impact Estimate */}
           {insight.impact_estimate && (
-            <div className="bg-white/60 rounded-lg p-3">
-              <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">
+            <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-lg p-3">
+              <h4 className="text-xs font-semibold text-emerald-400 uppercase tracking-wider mb-1">
                 Potential Impact
               </h4>
-              <p className="text-lg font-bold text-gray-900">
+              <p className="text-lg font-bold text-emerald-400">
                 +{insight.impact_estimate.potential_gain.toLocaleString()} {insight.impact_estimate.unit}
               </p>
-              <p className="text-xs text-gray-500">
+              <p className="text-xs text-slate-500">
                 {Math.round(insight.impact_estimate.confidence * 100)}% confidence
               </p>
             </div>
@@ -312,18 +397,18 @@ function InsightCard({
 
           {/* Suggested Action */}
           {insight.suggested_action && (
-            <div className="bg-white/60 rounded-lg p-3">
-              <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">
+            <div className="bg-slate-900/50 rounded-lg p-3 border border-slate-700/30">
+              <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">
                 Suggested Action
               </h4>
-              <p className="text-sm text-gray-700">{insight.suggested_action}</p>
+              <p className="text-sm text-slate-300">{insight.suggested_action}</p>
             </div>
           )}
 
           {/* Affected Items */}
           {insight.affected_items.length > 0 && (
             <div>
-              <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+              <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
                 Affected {insight.affected_items[0].type === "keyword" ? "Keywords" : "Pages"}
               </h4>
               <div className="flex flex-wrap gap-2">
@@ -338,8 +423,8 @@ function InsightCard({
                     }}
                     className={cn(
                       "flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium",
-                      "bg-white/80 text-gray-700 hover:bg-white transition-colors",
-                      onViewKeyword && item.type === "keyword" && "cursor-pointer hover:text-[#FF6B35]"
+                      "bg-slate-700/50 text-slate-300 hover:bg-slate-600/50 transition-colors border border-slate-600/50",
+                      onViewKeyword && item.type === "keyword" && "cursor-pointer hover:text-emerald-400 hover:border-emerald-500/30"
                     )}
                   >
                     {item.type === "keyword" ? (
@@ -363,7 +448,7 @@ function InsightCard({
                 e.stopPropagation();
                 onComplete();
               }}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-emerald-500 text-white hover:bg-emerald-600 transition-colors"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-emerald-600 text-white hover:bg-emerald-500 transition-colors"
             >
               <HugeiconsIcon icon={CheckmarkCircle02Icon} size={14} />
               Mark Complete
@@ -373,7 +458,7 @@ function InsightCard({
                 e.stopPropagation();
                 onDismiss();
               }}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-gray-200 text-gray-700 hover:bg-gray-300 transition-colors"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-700 text-slate-300 hover:bg-slate-600 transition-colors"
             >
               <HugeiconsIcon icon={Cancel01Icon} size={14} />
               Dismiss
@@ -402,12 +487,12 @@ export function InsightsSummary({
   onViewAll: () => void;
 }) {
   return (
-    <div className="bg-white rounded-xl border border-gray-200 p-4">
+    <div className="bg-slate-800/80 rounded-lg border border-slate-700/50 p-4">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="font-semibold text-gray-900">Insights</h3>
+        <h3 className="font-semibold text-white">Insights</h3>
         <button
           onClick={onViewAll}
-          className="text-sm text-[#FF6B35] hover:underline font-medium"
+          className="text-sm text-emerald-400 hover:text-emerald-300 font-medium transition-colors"
         >
           View All
         </button>
@@ -415,30 +500,30 @@ export function InsightsSummary({
 
       <div className="grid grid-cols-2 gap-3">
         {counts.critical > 0 && (
-          <div className="flex items-center gap-2 p-2 rounded-lg bg-red-50">
+          <div className="flex items-center gap-2 p-2 rounded-lg bg-red-500/10 border border-red-500/20">
             <div className="w-2 h-2 rounded-full bg-red-500" />
-            <span className="text-sm font-medium text-red-700">
+            <span className="text-sm font-medium text-red-400">
               {counts.critical} Critical
             </span>
           </div>
         )}
         {counts.high > 0 && (
-          <div className="flex items-center gap-2 p-2 rounded-lg bg-orange-50">
+          <div className="flex items-center gap-2 p-2 rounded-lg bg-orange-500/10 border border-orange-500/20">
             <div className="w-2 h-2 rounded-full bg-orange-500" />
-            <span className="text-sm font-medium text-orange-700">
+            <span className="text-sm font-medium text-orange-400">
               {counts.high} High Priority
             </span>
           </div>
         )}
-        <div className="flex items-center gap-2 p-2 rounded-lg bg-red-50">
-          <HugeiconsIcon icon={Alert02Icon} size={16} className="text-red-600" />
-          <span className="text-sm text-gray-700">
+        <div className="flex items-center gap-2 p-2 rounded-lg bg-red-500/10 border border-red-500/20">
+          <HugeiconsIcon icon={Alert02Icon} size={16} className="text-red-400" />
+          <span className="text-sm text-slate-300">
             {counts.threat} Threats
           </span>
         </div>
-        <div className="flex items-center gap-2 p-2 rounded-lg bg-emerald-50">
-          <HugeiconsIcon icon={Target01Icon} size={16} className="text-emerald-600" />
-          <span className="text-sm text-gray-700">
+        <div className="flex items-center gap-2 p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
+          <HugeiconsIcon icon={Target01Icon} size={16} className="text-emerald-400" />
+          <span className="text-sm text-slate-300">
             {counts.opportunity} Opportunities
           </span>
         </div>
