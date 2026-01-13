@@ -13,9 +13,10 @@ import {
   ArrowReloadHorizontalIcon,
   Calendar03Icon,
   ArrowDown01Icon,
+  Layers01Icon,
 } from "@hugeicons/core-free-icons";
 
-type TabType = "overview" | "keywords" | "pages" | "insights" | "tracked" | "alerts" | "settings";
+type TabType = "overview" | "keywords" | "pages" | "clusters" | "insights" | "tracked" | "alerts" | "settings";
 
 interface TopNavProps {
   activeTab: TabType;
@@ -23,6 +24,7 @@ interface TopNavProps {
   alertCount?: number;
   trackedCount?: number;
   insightsCount?: number;
+  clustersCount?: number;
   days: number;
   onDaysChange: (days: number) => void;
   onSync: () => void;
@@ -33,6 +35,7 @@ const navItems = [
   { id: "overview" as const, label: "Overview", icon: Analytics01Icon },
   { id: "keywords" as const, label: "Keywords", icon: Search01Icon },
   { id: "pages" as const, label: "Pages", icon: File01Icon },
+  { id: "clusters" as const, label: "Clusters", icon: Layers01Icon },
   { id: "insights" as const, label: "Insights", icon: Idea01Icon },
   { id: "tracked" as const, label: "Tracked", icon: StarIcon },
   { id: "alerts" as const, label: "Alerts", icon: Notification03Icon },
@@ -45,6 +48,7 @@ export function TopNav({
   alertCount = 0,
   trackedCount = 0,
   insightsCount = 0,
+  clustersCount = 0,
   days,
   onDaysChange,
   onSync,
@@ -97,7 +101,8 @@ export function TopNav({
           const badgeCount =
             item.id === "alerts" ? alertCount :
             item.id === "tracked" ? trackedCount :
-            item.id === "insights" ? insightsCount : 0;
+            item.id === "insights" ? insightsCount :
+            item.id === "clusters" ? clustersCount : 0;
 
           return (
             <button
@@ -124,6 +129,8 @@ export function TopNav({
                       ? "bg-[#FF6B35] text-white"
                       : item.id === "insights"
                       ? "bg-purple-500 text-white"
+                      : item.id === "clusters"
+                      ? "bg-amber-500 text-white"
                       : "bg-gray-200 text-gray-700"
                   )}
                 >

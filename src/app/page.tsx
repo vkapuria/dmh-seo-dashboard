@@ -10,6 +10,7 @@ import { TrackedKeywordsTable } from "@/components/dashboard/tracked-keywords";
 import { AlertsList, AlertSummary } from "@/components/dashboard/alerts-list";
 import { InsightsList, InsightsSummary } from "@/components/dashboard/insights-list";
 import { DimensionFilters, CountryBreakdown, DeviceBreakdown } from "@/components/dashboard/dimension-filters";
+import { ClustersList, ClustersSummary } from "@/components/dashboard/clusters-list";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
@@ -28,7 +29,7 @@ import {
   Notification03Icon
 } from "@hugeicons/core-free-icons";
 
-type TabType = "overview" | "keywords" | "pages" | "insights" | "tracked" | "alerts" | "settings";
+type TabType = "overview" | "keywords" | "pages" | "clusters" | "insights" | "tracked" | "alerts" | "settings";
 
 
 interface MetricsData {
@@ -171,6 +172,50 @@ interface InsightsData {
   };
 }
 
+interface ClusterItem {
+  id: string;
+  cluster_name: string;
+  cluster_type: "root_term" | "page_based" | "semantic";
+  root_term: string | null;
+  primary_page_url: string | null;
+  keyword_count: number;
+  created_at: string;
+  updated_at: string;
+  is_active: boolean;
+  metadata: Record<string, unknown>;
+  metrics: {
+    cluster_id: string;
+    total_clicks: number;
+    total_impressions: number;
+    avg_position: number;
+    avg_ctr: number;
+    keyword_count: number;
+    page_count: number;
+    position_trend: number;
+    impressions_trend: number;
+    clicks_trend: number;
+    authority_score: number;
+    health_status: "healthy" | "warning" | "critical";
+    weak_keywords: Array<{ query: string; position: number; issue: string }>;
+    top_keywords: Array<{ query: string; clicks: number; position: number }>;
+  };
+}
+
+interface ClustersData {
+  clusters: ClusterItem[];
+  total: number;
+  byType: {
+    root_term: number;
+    page_based: number;
+    semantic: number;
+  };
+  byHealth: {
+    healthy: number;
+    warning: number;
+    critical: number;
+  };
+}
+
 export default function Dashboard() {
   // -- UI STATE --
   const [activeTab, setActiveTab] = useState<TabType>("overview");
@@ -205,6 +250,8 @@ export default function Dashboard() {
   const [alerts, setAlerts] = useState<AlertsData | null>(null);
   const [insights, setInsights] = useState<InsightsData | null>(null);
   const [isInsightsLoading, setIsInsightsLoading] = useState(false);
+  const [clusters, setClusters] = useState<ClustersData | null>(null);
+  const [isClustersLoading, setIsClustersLoading] = useState(false);
   const [syncStatus, setSyncStatus] = useState<SyncData | null>(null);
   const [dimensions, setDimensions] = useState<{
     countries: any[];
@@ -316,10 +363,26 @@ export default function Dashboard() {
     }
   }, []);
 
+  const fetchClusters = useCallback(async () => {
+    setIsClustersLoading(true);
+    try {
+      const res = await fetch("/api/clusters");
+      if (res.ok) {
+        const data = await res.json();
+        setClusters(data);
+      }
+    } catch (error) {
+      console.error("Error fetching clusters:", error);
+    } finally {
+      setIsClustersLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     fetchData();
     fetchInsights();
-  }, [fetchData, fetchInsights]);
+    fetchClusters();
+  }, [fetchData, fetchInsights, fetchClusters]);
 
   useEffect(() => {
     fetchTrackedKeywords();
@@ -410,7 +473,7 @@ export default function Dashboard() {
       const res = await fetch(`/api/sync?mode=${mode}`, { method: "POST" });
       const result = await res.json();
       if (result.success) {
-        await Promise.all([fetchData(), fetchInsights()]);
+        await Promise.all([fetchData(), fetchInsights(), fetchClusters()]);
       } else {
         alert(`Sync failed: ${result.error}`);
       }
@@ -579,6 +642,7 @@ export default function Dashboard() {
         alertCount={alerts?.unreadCounts.total || 0}
         trackedCount={trackedKeywords.length}
         insightsCount={insights?.counts.total || 0}
+        clustersCount={clusters?.total || 0}
         days={days}
         onDaysChange={setDays}
         onSync={() => handleSync("daily")}
@@ -634,7 +698,7 @@ export default function Dashboard() {
                     />
                   )}
 
-                  {/* Insights Summary + Gainers/Losers */}
+                  {/* Insights Summary + Clusters Summary + Gainers/Losers */}
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
                     {insights && insights.counts.total > 0 && (
                       <InsightsSummary
@@ -642,14 +706,31 @@ export default function Dashboard() {
                         onViewAll={() => setActiveTab("insights")}
                       />
                     )}
+                    {clusters && clusters.total > 0 && (
+                      <ClustersSummary
+                        counts={{
+                          total: clusters.total,
+                          healthy: clusters.byHealth.healthy,
+                          warning: clusters.byHealth.warning,
+                          critical: clusters.byHealth.critical,
+                        }}
+                        onViewAll={() => setActiveTab("clusters")}
+                      />
+                    )}
                     {filteredKeywordsData && (
                       <>
                         <CompactKeywordList keywords={filteredKeywordsData.gainers} title="Top Gainers" type="gainers" />
                         <CompactKeywordList keywords={filteredKeywordsData.losers} title="Top Losers" type="losers" />
-                        <CompactKeywordList keywords={filteredKeywordsData.newKeywords} title="New Rankings" type="new" />
                       </>
                     )}
                   </div>
+
+                  {/* New Rankings */}
+                  {filteredKeywordsData && filteredKeywordsData.newKeywords.length > 0 && (
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+                      <CompactKeywordList keywords={filteredKeywordsData.newKeywords} title="New Rankings" type="new" />
+                    </div>
+                  )}
 
                   {/* Page Performance */}
                   {pages && (
@@ -832,6 +913,16 @@ export default function Dashboard() {
                       pageTypeLabels={pages.pageTypeLabels}
                     />
                   </div>
+                </div>
+              )}
+
+              {/* CLUSTERS TAB */}
+              {activeTab === "clusters" && (
+                <div className="space-y-4 animate-fade-in">
+                  <ClustersList
+                    clusters={clusters?.clusters || []}
+                    isLoading={isClustersLoading}
+                  />
                 </div>
               )}
 

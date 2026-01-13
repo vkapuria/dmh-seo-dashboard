@@ -179,6 +179,42 @@ async function syncKeywordRankings(dateRange: DateRange): Promise<number> {
   return data.length;
 }
 
+// Sync raw keyword-page rankings (before aggregation)
+// This preserves all keyword-page combinations for clustering analysis
+async function syncKeywordPageRankings(dateRange: DateRange): Promise<number> {
+  const rankings = await fetchKeywordRankings(dateRange);
+
+  if (rankings.length === 0) return 0;
+
+  // Store all keyword-page pairs (no aggregation)
+  const data = rankings
+    .filter((r) => r.pageUrl) // Only include rows with page URLs
+    .map((r) => ({
+      date: r.date,
+      query: r.query,
+      page_url: r.pageUrl,
+      clicks: r.clicks,
+      impressions: r.impressions,
+      ctr: r.ctr,
+      position: r.position,
+    }));
+
+  if (data.length === 0) return 0;
+
+  // Batch insert in chunks to avoid payload limits
+  const BATCH_SIZE = 1000;
+  for (let i = 0; i < data.length; i += BATCH_SIZE) {
+    const batch = data.slice(i, i + BATCH_SIZE);
+    const { error } = await supabase
+      .from("seo_keyword_page_rankings")
+      .upsert(batch as never[], { onConflict: "date,query,page_url" });
+
+    if (error) throw error;
+  }
+
+  return data.length;
+}
+
 // Sync page performance
 async function syncPagePerformance(dateRange: DateRange): Promise<number> {
   const pages = await fetchPagePerformance(dateRange);
@@ -459,8 +495,13 @@ export async function runDailySync(): Promise<{
     console.log(`Synced ${dailyCount} daily metrics`);
     totalRecords += dailyCount;
 
+    // Sync raw keyword-page pairs (before aggregation) for clustering
+    const keywordPageCount = await syncKeywordPageRankings(dateRange);
+    console.log(`Synced ${keywordPageCount} keyword-page rankings (raw)`);
+    totalRecords += keywordPageCount;
+
     const keywordCount = await syncKeywordRankings(dateRange);
-    console.log(`Synced ${keywordCount} keyword rankings`);
+    console.log(`Synced ${keywordCount} keyword rankings (aggregated)`);
     totalRecords += keywordCount;
 
     const pageCount = await syncPagePerformance(dateRange);
@@ -519,11 +560,12 @@ export async function runBackfill(): Promise<{
       console.log(`Processing ${monthRange.startDate} to ${monthRange.endDate}`);
 
       const dailyCount = await syncDailyMetrics(monthRange);
+      const keywordPageCount = await syncKeywordPageRankings(monthRange);
       const keywordCount = await syncKeywordRankings(monthRange);
       const pageCount = await syncPagePerformance(monthRange);
 
-      totalRecords += dailyCount + keywordCount + pageCount;
-      console.log(`Month complete: ${dailyCount + keywordCount + pageCount} records`);
+      totalRecords += dailyCount + keywordPageCount + keywordCount + pageCount;
+      console.log(`Month complete: ${dailyCount + keywordPageCount + keywordCount + pageCount} records`);
 
       currentStart = currentEnd;
     }

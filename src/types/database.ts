@@ -8,6 +8,10 @@ export type InsightPriority = "critical" | "high" | "medium" | "low";
 export type InsightCategory = "keyword" | "page" | "technical" | "content";
 export type InsightStatus = "active" | "dismissed" | "completed" | "expired";
 
+// Cluster Types
+export type ClusterType = "root_term" | "page_based" | "semantic";
+export type ClusterInsightType = "content_gap" | "weak_link" | "authority_score" | "cannibalization" | "coverage_decline";
+
 export interface DailyMetrics {
   id: string;
   date: string;
@@ -202,4 +206,96 @@ export interface PerformanceByType {
   avgCtr: number;
   avgPosition: number;
   pageCount: number;
+}
+
+// ============================================
+// Cluster Interfaces
+// ============================================
+
+// Raw keyword-page ranking (before aggregation)
+export interface KeywordPageRanking {
+  id: string;
+  date: string;
+  query: string;
+  page_url: string;
+  clicks: number;
+  impressions: number;
+  ctr: number;
+  position: number;
+  created_at: string;
+}
+
+// Keyword cluster definition
+export interface KeywordCluster {
+  id: string;
+  cluster_name: string;
+  cluster_type: ClusterType;
+  root_term: string | null;
+  primary_page_url: string | null;
+  keyword_count: number;
+  created_at: string;
+  updated_at: string;
+  is_active: boolean;
+  metadata: Record<string, unknown>;
+}
+
+// Cluster keyword membership
+export interface ClusterKeyword {
+  id: string;
+  cluster_id: string;
+  query: string;
+  is_primary: boolean;
+  added_at: string;
+}
+
+// Cluster-specific insight
+export interface ClusterInsight {
+  id: string;
+  cluster_id: string;
+  insight_type: ClusterInsightType;
+  title: string;
+  description: string;
+  suggested_action: string | null;
+  evidence: InsightEvidence[];
+  affected_items: InsightAffectedItem[];
+  priority: InsightPriority;
+  confidence_score: number;
+  created_at: string;
+  updated_at: string;
+  expires_at: string | null;
+  status: InsightStatus;
+  insight_key: string;
+  metadata: Record<string, unknown>;
+}
+
+// Computed cluster metrics (not stored, calculated on-demand)
+export interface ClusterMetrics {
+  cluster_id: string;
+  total_clicks: number;
+  total_impressions: number;
+  avg_position: number;
+  avg_ctr: number;
+  keyword_count: number;
+  page_count: number;
+  position_trend: number; // vs previous period (negative = improving)
+  impressions_trend: number; // % change vs previous period
+  clicks_trend: number; // % change vs previous period
+  authority_score: number; // 0-100 composite score
+  health_status: "healthy" | "warning" | "critical";
+  weak_keywords: Array<{ query: string; position: number; issue: string }>;
+  top_keywords: Array<{ query: string; clicks: number; position: number }>;
+}
+
+// Cluster with computed metrics (for API responses)
+export interface ClusterWithMetrics extends KeywordCluster {
+  metrics: ClusterMetrics;
+}
+
+// Content gap suggestion
+export interface ContentGap {
+  suggested_keyword: string;
+  reasoning: string;
+  estimated_impressions: number;
+  related_existing_keywords: string[];
+  priority: InsightPriority;
 }
